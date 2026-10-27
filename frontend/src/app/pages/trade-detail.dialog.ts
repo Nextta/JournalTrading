@@ -41,6 +41,7 @@ import type {
 import { TIMEFRAMES } from '../core/models';
 import { NotificationsService } from '../core/notifications.service';
 import { Store } from '../core/store';
+import { barIndexAt, formatLots, parseServerTime, resolveExitReason } from '../core/trade-chart';
 import { ChartComponent } from '../shared/chart.component';
 import { ImageGalleryComponent } from '../shared/image-gallery.component';
 
@@ -109,8 +110,32 @@ export class TradeDetailDialogComponent {
         month: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
+        timeZone: 'UTC',
       }),
     );
+    const entryIndex = barIndexAt(bars, parseServerTime(trade.openTimeServer), series.timeframe);
+    const exitIndex =
+      trade.closePrice === null
+        ? null
+        : barIndexAt(bars, parseServerTime(trade.closeTimeServer), series.timeframe);
+    const isBuy = trade.side === 'buy';
+    const sideColor = isBuy ? '#2dd4a0' : '#f2666f';
+    const entryText = isBuy ? 'entry buy' : 'entry sell';
+    const priceValues = bars.flatMap((bar) => [bar.low, bar.high]);
+    if (entryIndex !== null) priceValues.push(trade.openPrice);
+    if (trade.closePrice !== null) priceValues.push(trade.closePrice);
+    const lowest = priceValues.reduce((min, value) => Math.min(min, value), Number.POSITIVE_INFINITY);
+    const highest = priceValues.reduce(
+      (max, value) => Math.max(max, value),
+      Number.NEGATIVE_INFINITY,
+    );
+    const rawRange = Math.max(highest - lowest, 1e-9);
+    const pricePadding = Math.max(rawRange * 0.18, Math.abs(highest) * 0.0002, 1e-8);
+    const axisDecimals = Math.max(2, Math.min(6, Math.ceil(-Math.log10(rawRange)) + 2));
+    const axisStep = 10 ** axisDecimals;
+    const axisMin = Math.floor((lowest - pricePadding) * axisStep) / axisStep;
+    const axisMax = Math.ceil((highest + pricePadding) * axisStep) / axisStep;
+
     const lines: Record<string, unknown>[] = [
       {
         yAxis: trade.openPrice,
@@ -125,10 +150,85 @@ export class TradeDetailDialogComponent {
         lineStyle: { color: '#8a99b3', type: 'dashed', width: 1 },
       });
     }
+
+    const markers: Record<string, unknown>[] = [];
+    if (entryIndex !== null) {
+      markers.push({
+        name: 'Entrada',
+        coord: [entryIndex, trade.openPrice],
+        symbol: 'arrow',
+        symbolSize: 12,
+        symbolRotate: isBuy ? 0 : 180,
+        symbolOffset: isBuy ? [0, 8] : [0, -8],
+        itemStyle: { color: sideColor, borderColor: '#0b0f17', borderWidth: 1 },
+        label: {
+          show: true,
+          position: isBuy ? 'bottom' : 'top',
+          distance: 2,
+          formatter: `${formatLots(trade.volumeInitial)} · ${entryText}`,
+          color: sideColor,
+          fontSize: 9.5,
+          fontWeight: 700,
+          backgroundColor: 'rgba(11, 15, 23, 0.84)',
+          borderColor: sideColor,
+          borderWidth: 1,
+          borderRadius: 3,
+          padding: [2, 4],
+        },
+      });
+    }
+    if (exitIndex !== null && trade.closePrice !== null) {
+      const reason = resolveExitReason(trade.deals, trade.closePrice, trade.sl, trade.tp);
+      markers.push({
+        name: 'Salida',
+        coord: [exitIndex, trade.closePrice],
+        symbol: 'arrow',
+        symbolSize: 12,
+        symbolRotate: isBuy ? 0 : 180,
+        symbolOffset: isBuy ? [0, 8] : [0, -8],
+        itemStyle: { color: sideColor, borderColor: '#0b0f17', borderWidth: 1 },
+        label: {
+          show: true,
+          position: isBuy ? 'bottom' : 'top',
+          distance: 2,
+          formatter: reason,
+          color: sideColor,
+          fontSize: 9.5,
+          fontWeight: 700,
+          backgroundColor: 'rgba(11, 15, 23, 0.84)',
+          borderColor: sideColor,
+          borderWidth: 1,
+          borderRadius: 3,
+          padding: [2, 4],
+        },
+      });
+    }
+
+    const linkData = bars.map((_, index) => {
+      if (index === entryIndex) return trade.openPrice;
+      if (index === exitIndex) return trade.closePrice;
+      return null;
+    });
+    const linkSeries: Record<string, unknown>[] =
+      entryIndex !== null && exitIndex !== null && trade.closePrice !== null
+        ? [
+            {
+              name: 'Entrada → salida',
+              type: 'line',
+              data: linkData,
+              connectNulls: true,
+              symbol: 'none',
+              silent: true,
+              lineStyle: { color: sideColor, width: 1.4, opacity: 0.8 },
+              z: 3,
+            },
+          ]
+        : [];
+
     return {
       animation: false,
       backgroundColor: 'transparent',
-      grid: { left: 58, right: 20, top: 24, bottom: 30 },
+      grid: { left: 58, right: 20, top: 42, bottom: 58 },
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'cross' },
@@ -145,8 +245,13 @@ export class TradeDetailDialogComponent {
         splitLine: { show: false },
       },
       yAxis: {
-        scale: true,
-        axisLabel: { color: '#8a99b3', fontSize: 9 },
+        min: axisMin,
+        max: axisMax,
+        axisLabel: {
+          color: '#8a99b3',
+          fontSize: 9,
+          formatter: (value: number) => value.toFixed(axisDecimals),
+        },
         splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
       },
       series: [
@@ -164,7 +269,13 @@ export class TradeDetailDialogComponent {
             silent: true,
             data: lines,
           },
+          markPoint: {
+            symbol: 'arrow',
+            symbolSize: 13,
+            data: markers,
+          },
         },
+        ...linkSeries,
       ],
     };
   });

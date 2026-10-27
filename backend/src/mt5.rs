@@ -204,12 +204,18 @@ struct DealPayload {
     magic: Option<i64>,
     #[serde(default)]
     comment: Option<String>,
+    #[serde(default = "default_deal_reason")]
+    reason: i64,
     #[serde(default)]
     time_server: String,
     #[serde(default)]
     time: Option<i64>,
     #[serde(default)]
     time_utc: Option<String>,
+}
+
+fn default_deal_reason() -> i64 {
+    -1
 }
 
 #[derive(Debug, Deserialize)]
@@ -984,8 +990,8 @@ async fn upsert_deal(
     sqlx::query(
         "INSERT INTO deals
          (id, trade_id, account_id, deal_ticket, entry, type, volume, price, profit,
-          commission, swap, time_server, time_utc, comment)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          commission, swap, time_server, time_utc, comment, reason)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(account_id, deal_ticket) DO UPDATE SET
            trade_id = excluded.trade_id,
            entry = excluded.entry,
@@ -997,7 +1003,8 @@ async fn upsert_deal(
            swap = excluded.swap,
            time_server = excluded.time_server,
            time_utc = excluded.time_utc,
-           comment = excluded.comment",
+           comment = excluded.comment,
+           reason = excluded.reason",
     )
     .bind(new_id())
     .bind(&trade_id)
@@ -1013,6 +1020,7 @@ async fn upsert_deal(
     .bind(&time_server)
     .bind(&time_utc)
     .bind(deal.comment.as_deref().unwrap_or(""))
+    .bind(deal.reason)
     .execute(pool)
     .await?;
 

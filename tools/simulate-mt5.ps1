@@ -110,28 +110,28 @@ function Build-SyncPayload {
         @{
             deal_ticket = 900001; position_ticket = 500001; symbol = "EURUSD"
             type = 0; entry = 0; volume = 0.10; price = 1.08500
-            profit = 0.0; commission = -0.35; swap = 0.0
+            profit = 0.0; commission = -0.35; swap = 0.0; reason = 3
             magic = 0; comment = "sim-in"; time_server = (Format-ServerTime $yesterday.Date.AddHours(10))
             time = (To-Epoch $yesterday.Date.AddHours(10))
         },
         @{
             deal_ticket = 900002; position_ticket = 500001; symbol = "EURUSD"
             type = 0; entry = 1; volume = 0.10; price = 1.08700
-            profit = 20.0; commission = -0.35; swap = 0.0
+            profit = 20.0; commission = -0.35; swap = 0.0; reason = 5
             magic = 0; comment = "sim-out"; time_server = (Format-ServerTime $yesterday.Date.AddHours(12).AddMinutes(30))
             time = (To-Epoch $yesterday.Date.AddHours(12).AddMinutes(30))
         },
         @{
             deal_ticket = 900003; position_ticket = 500002; symbol = "XAUUSD"
             type = 1; entry = 0; volume = 0.05; price = 2400.00
-            profit = 0.0; commission = -0.25; swap = 0.0
+            profit = 0.0; commission = -0.25; swap = 0.0; reason = 3
             magic = 0; comment = "sim-in"; time_server = (Format-ServerTime $yesterday.Date.AddHours(14))
             time = (To-Epoch $yesterday.Date.AddHours(14))
         },
         @{
             deal_ticket = 900004; position_ticket = 500002; symbol = "XAUUSD"
             type = 1; entry = 1; volume = 0.05; price = 2390.00
-            profit = 50.0; commission = -0.25; swap = 0.0
+            profit = 50.0; commission = -0.25; swap = 0.0; reason = 4
             magic = 0; comment = "sim-out"; time_server = (Format-ServerTime $yesterday.Date.AddHours(15))
             time = (To-Epoch $yesterday.Date.AddHours(15))
         }
@@ -183,8 +183,8 @@ function Build-SeriesPayload {
 
     $fromValue = [long]$CommandPayload.from_time
     $toValue = [long]$CommandPayload.to_time
-    $from = if ($fromValue -gt 0) { From-Epoch $fromValue } else { $now.AddHours(-4) }
-    $to = if ($toValue -gt 0) { From-Epoch $toValue } else { $now }
+    $from = if ($fromValue -gt 0) { (From-Epoch $fromValue).AddSeconds(-$seconds * 20) } else { $now.AddHours(-4) }
+    $to = if ($toValue -gt 0) { (From-Epoch $toValue).AddSeconds($seconds * 10) } else { $now }
     if ($to -gt $now) { $to = $now }
     if ($to -le $from) { $to = $from.AddSeconds($seconds * 40) }
 
