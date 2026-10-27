@@ -1,0 +1,163 @@
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.settings-card {
+  overflow: hidden;
+}
+
+.settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px 18px;
+}
+
+.accent-pill {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.endpoint {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  > span {
+    color: var(--muted-2);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+}
+
+.endpoint-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(6, 10, 18, 0.3);
+
+  code {
+    flex: 1;
+    overflow: hidden;
+    color: #b8bfff;
+    font-family: 'Cascadia Code', Consolas, monospace;
+    font-size: 10.5px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 2px;
+}
+
+.help {
+  line-height: 1.55;
+
+  code {
+    color: var(--muted);
+    font-family: 'Cascadia Code', Consolas, monospace;
+    font-size: 10px;
+  }
+}
+
+.data-dir {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  > span {
+    color: var(--muted-2);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  code {
+    overflow-wrap: anywhere;
+    color: var(--muted);
+    font-family: 'Cascadia Code', Consolas, monospace;
+    font-size: 10.5px;
+    line-height: 1.5;
+  }
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.about-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+
+  > div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(30, 42, 61, 0.5);
+
+    &:last-child {
+      border-bottom: 0;
+    }
+  }
+
+  dt {
+    color: var(--muted-2);
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  dd {
+    margin: 0;
+    color: var(--text);
+    font-size: 11.5px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.instructions {
+  margin-top: 16px;
+  overflow: hidden;
+
+  ol {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.7;
+  }
+
+  li + li {
+    margin-top: 4px;
+  }
+
+  code {
+    color: #b8bfff;
+    font-family: 'Cascadia Code', Consolas, monospace;
+    font-size: 10.5px;
+  }
+}
+
+@media (max-width: 1000px) {
+  .settings-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

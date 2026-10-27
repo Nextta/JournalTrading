@@ -1,0 +1,98 @@
+<div class="page">
+  <header class="page-head">
+    <div>
+      <div class="eyebrow">Playbook</div>
+      <h1>Estrategias</h1>
+      <p class="text-sm muted">
+        Define tus checklists una vez y reutilízalas cada día en los activos que operes.
+      </p>
+    </div>
+    <div class="head-actions">
+      <button mat-stroked-button (click)="toggleArchived()">
+        <mat-icon>{{ includeArchived() ? 'visibility_off' : 'visibility' }}</mat-icon>
+        {{ includeArchived() ? 'Ocultar archivadas' : 'Ver archivadas' }}
+      </button>
+      <button mat-flat-button color="primary" (click)="create()">
+        <mat-icon>add</mat-icon>
+        Nueva estrategia
+      </button>
+    </div>
+  </header>
+
+  @if (loading()) {
+    <mat-progress-bar mode="indeterminate" class="page-progress" />
+  }
+
+  @if (strategies().length) {
+    <div class="strategy-grid">
+      @for (strategy of strategies(); track strategy.id) {
+        <article class="card strategy-card" [class.archived]="strategy.archived">
+          <div class="strategy-head">
+            <span class="strategy-dot" [style.background]="strategy.color"></span>
+            <div class="strategy-title">
+              <h3>{{ strategy.name }}</h3>
+              <p>{{ strategy.description || 'Sin descripción' }}</p>
+            </div>
+            @if (strategy.archived) {
+              <span class="pill">Archivada</span>
+            }
+          </div>
+
+          <div class="strategy-meta">
+            <span class="pill">{{ strategy.items.length }} {{ strategy.items.length === 1 ? 'punto' : 'puntos' }}</span>
+            <span class="pill">{{ sectionsCount(strategy) }} {{ sectionsCount(strategy) === 1 ? 'sección' : 'secciones' }}</span>
+          </div>
+
+          <div class="strategy-preview">
+            @if (strategy.items.length) {
+              @for (item of previewItems(strategy); track item.id) {
+                <div class="preview-item">
+                  <span class="preview-dot" [style.background]="strategy.color"></span>
+                  <span>{{ item.text }}</span>
+                  @if (item.required) {
+                    <span class="req">*</span>
+                  }
+                </div>
+              }
+              @if (strategy.items.length > 4) {
+                <span class="text-xs muted more">
+                  +{{ strategy.items.length - 4 }} {{ strategy.items.length - 4 === 1 ? 'punto' : 'puntos' }} más
+                </span>
+              }
+            } @else {
+              <p class="text-xs muted">Checklist vacía.</p>
+            }
+          </div>
+
+          <div class="strategy-actions">
+            <button mat-stroked-button (click)="edit(strategy)">
+              <mat-icon>edit</mat-icon>
+              Editar
+            </button>
+            <button mat-icon-button matTooltip="Duplicar" (click)="duplicate(strategy)">
+              <mat-icon>content_copy</mat-icon>
+            </button>
+            @if (!strategy.archived) {
+              <button mat-icon-button matTooltip="Archivar" (click)="archive(strategy)">
+                <mat-icon>archive</mat-icon>
+              </button>
+            }
+          </div>
+        </article>
+      }
+    </div>
+  } @else if (!loading()) {
+    <div class="card empty-state">
+      <span class="material-symbols-outlined">rule</span>
+      <h3>Sin estrategias</h3>
+      <p>
+        Crea tu primera estrategia con una checklist de puntos. Podrás asignarla a cada activo
+        del día.
+      </p>
+      <button mat-flat-button color="primary" (click)="create()">
+        <mat-icon>add</mat-icon>
+        Nueva estrategia
+      </button>
+    </div>
+  }
+</div>

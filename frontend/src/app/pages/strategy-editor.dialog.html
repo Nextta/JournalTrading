@@ -1,0 +1,97 @@
+<div class="dialog-title">
+  <span class="material-symbols-outlined">rule</span>
+  <span>{{ data.strategy ? 'Editar estrategia' : 'Nueva estrategia' }}</span>
+</div>
+
+<mat-dialog-content class="dialog-body">
+  <div class="top-grid">
+    <mat-form-field appearance="outline" subscriptSizing="dynamic">
+      <mat-label>Nombre</mat-label>
+      <input matInput [(ngModel)]="name" placeholder="Ej. Ruptura de rango asiático" autofocus />
+    </mat-form-field>
+
+    <div class="color-field">
+      <span class="field-label">Color</span>
+      <div class="color-row">
+        @for (option of colors; track option) {
+          <button
+            type="button"
+            class="color-swatch"
+            [class.selected]="color === option"
+            [style.background]="option"
+            [attr.aria-label]="option"
+            (click)="color = option"
+          >
+            @if (color === option) {
+              <mat-icon>check</mat-icon>
+            }
+          </button>
+        }
+      </div>
+    </div>
+  </div>
+
+  <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full">
+    <mat-label>Descripción</mat-label>
+    <textarea
+      matInput
+      [(ngModel)]="description"
+      rows="2"
+      placeholder="Idea central, contexto y condiciones generales…"
+    ></textarea>
+  </mat-form-field>
+
+  <div class="items-head">
+    <div>
+      <h3>Checklist</h3>
+      <p class="text-xs muted">Agrupa los puntos por sección. Los obligatorios se marcan con *.</p>
+    </div>
+    <button mat-stroked-button type="button" (click)="addItem()">
+      <mat-icon>add</mat-icon>
+      Añadir punto
+    </button>
+  </div>
+
+  <div class="items">
+    @if (!items().length) {
+      <div class="items-empty">
+        <p class="text-xs muted">Añade al menos un punto a la checklist.</p>
+      </div>
+    }
+    @for (item of items(); track $index) {
+      <div class="item-row">
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="item-section">
+          <mat-label>Sección</mat-label>
+          <input matInput [(ngModel)]="item.section" placeholder="General" />
+        </mat-form-field>
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="item-text">
+          <mat-label>Punto</mat-label>
+          <input matInput [(ngModel)]="item.text" placeholder="Ej. Esperar cierre de vela en la zona" />
+        </mat-form-field>
+        <mat-checkbox [(ngModel)]="item.required" class="item-required">Obligatorio</mat-checkbox>
+        <button
+          mat-icon-button
+          type="button"
+          class="item-remove"
+          matTooltip="Eliminar punto"
+          (click)="removeItem($index)"
+        >
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+    }
+  </div>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="close()">Cancelar</button>
+  <button
+    mat-flat-button
+    color="primary"
+    type="button"
+    [disabled]="saving() || !name.trim()"
+    (click)="save()"
+  >
+    {{ saving() ? 'Guardando…' : 'Guardar estrategia' }}
+  </button>
+</mat-dialog-actions>

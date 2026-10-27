@@ -1,0 +1,194 @@
+@if (trade(); as t) {
+  <div class="detail-head">
+    <div class="detail-identity">
+      <span class="detail-symbol">{{ t.symbol }}</span>
+      <span
+        class="side-badge"
+        [class.buy]="t.side === 'buy'"
+        [class.sell]="t.side === 'sell'"
+      >
+        {{ sideLabel(t.side) }}
+      </span>
+      <span class="pill">{{ t.state === 'open' ? 'Abierta' : 'Cerrada' }}</span>
+      <span class="text-xs muted">#{{ t.positionTicket }}</span>
+    </div>
+    <div class="detail-result" [class.pos]="t.profitNet > 0" [class.neg]="t.profitNet < 0">
+      {{ signed(t.profitNet) }}
+      <small>{{ formatR(t.rMultiple) }}</small>
+    </div>
+    <button mat-icon-button matTooltip="Cerrar" (click)="close()">
+      <mat-icon>close</mat-icon>
+    </button>
+  </div>
+
+  <mat-dialog-content class="detail-body">
+    @if (loading()) {
+      <mat-progress-bar mode="indeterminate" />
+    }
+
+    <section class="chart-card">
+      <div class="chart-head">
+        <h3>Gráfico de la operación</h3>
+        <div class="tf-row">
+          @for (tf of timeframes; track tf) {
+            <button
+              type="button"
+              class="tf-chip"
+              [class.active]="timeframe() === tf"
+              (click)="selectTimeframe(tf)"
+            >
+              {{ tf }}
+            </button>
+          }
+        </div>
+      </div>
+
+      @if (chartOptions(); as options) {
+        <div class="chart-wrap">
+          <app-chart [options]="options" />
+        </div>
+      } @else if (seriesLoading()) {
+        <div class="chart-placeholder">
+          <mat-progress-bar mode="indeterminate" />
+          <span>Cargando velas {{ timeframe() }}…</span>
+        </div>
+      } @else if (seriesRequested()) {
+        <div class="chart-placeholder">
+          <span class="material-symbols-outlined">hourglass_top</span>
+          <span>Esperando que MetaTrader 5 envíe las velas {{ timeframe() }}…</span>
+        </div>
+      } @else {
+        <div class="chart-placeholder">
+          <span class="material-symbols-outlined">candlestick_chart</span>
+          <span>Sin velas guardadas para {{ timeframe() }}.</span>
+        </div>
+      }
+    </section>
+
+    <div class="detail-grid">
+      <section class="panel">
+        <h3>Resumen</h3>
+        <dl class="info-list">
+          <div><dt>Activo</dt><dd>{{ t.symbol }}</dd></div>
+          <div><dt>Volumen</dt><dd>{{ t.volumeInitial }} → {{ t.volumeCurrent }}</dd></div>
+          <div><dt>Apertura</dt><dd>{{ formatDateTime(t.openTimeServer) }}</dd></div>
+          <div><dt>Cierre</dt><dd>{{ formatDateTime(t.closeTimeServer) }}</dd></div>
+          <div><dt>Duración</dt><dd>{{ formatDuration(duration(t)) }}</dd></div>
+          <div><dt>Entrada</dt><dd>{{ formatPrice(t.openPrice) }}</dd></div>
+          <div><dt>Salida</dt><dd>{{ formatPrice(t.closePrice) }}</dd></div>
+          <div><dt>SL / TP</dt><dd>{{ formatPrice(t.sl) }} / {{ formatPrice(t.tp) }}</dd></div>
+          <div><dt>Bruto</dt><dd>{{ signed(t.profitGross) }}</dd></div>
+          <div><dt>Comisión</dt><dd>{{ signed(t.commission) }}</dd></div>
+          <div><dt>Swap</dt><dd>{{ signed(t.swap) }}</dd></div>
+          <div><dt>Riesgo</dt><dd>{{ money(t.riskAmount) }}</dd></div>
+          <div><dt>R múltiplo</dt><dd>{{ formatR(t.rMultiple) }}</dd></div>
+          <div><dt>Magic</dt><dd>{{ t.magic ?? '—' }}</dd></div>
+          <div><dt>Comentario</dt><dd>{{ t.comment || '—' }}</dd></div>
+        </dl>
+      </section>
+
+      <section class="panel edit-panel">
+        <h3>Clasificación</h3>
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full">
+          <mat-label>Estrategia</mat-label>
+          <mat-select [value]="t.strategyId" (selectionChange)="changeStrategy($event.value)">
+            <mat-option [value]="null">Sin estrategia</mat-option>
+            @for (strategy of strategies(); track strategy.id) {
+              <mat-option [value]="strategy.id">{{ strategy.name }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full">
+          <mat-label>Activo del diario</mat-label>
+          <mat-select [value]="t.dayAssetId" (selectionChange)="changeAsset($event.value)">
+            <mat-option [value]="null">Sin activo vinculado</mat-option>
+            @if (t.dayAssetId && !hasAsset(t.dayAssetId)) {
+              <mat-option [value]="t.dayAssetId">
+                {{ t.dayAssetSymbol || 'Activo vinculado' }}
+              </mat-option>
+            }
+            @for (asset of assets(); track asset.asset.id) {
+              <mat-option [value]="asset.asset.id">
+                {{ asset.asset.symbol }} · {{ asset.strategyName || 'Sin estrategia' }}
+              </mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+
+        <div class="notes-head">
+          <h3>Notas</h3>
+          <button
+            mat-flat-button
+            color="primary"
+            [disabled]="saving() || notes() === t.notes"
+            (click)="saveNotes()"
+          >
+            {{ saving() ? 'Guardando…' : 'Guardar' }}
+          </button>
+        </div>
+        <textarea
+          class="notes"
+          rows="6"
+          [ngModel]="notes()"
+          (ngModelChange)="notes.set($event)"
+          placeholder="Qué viste, por qué entraste, cómo gestionaste la salida…"
+        ></textarea>
+      </section>
+    </div>
+
+    <section class="panel">
+      <div class="panel-title-row">
+        <h3>Ejecuciones</h3>
+        <span class="text-xs muted">{{ t.deals.length }} deals</span>
+      </div>
+      @if (t.deals.length) {
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Deal</th>
+                <th>Tipo</th>
+                <th>Volumen</th>
+                <th class="num">Precio</th>
+                <th class="num">Beneficio</th>
+                <th>Hora</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (deal of t.deals; track deal.id) {
+                <tr>
+                  <td class="muted">#{{ deal.dealTicket }}</td>
+                  <td>{{ deal.entry === 0 ? 'Entrada' : 'Salida' }}</td>
+                  <td>{{ deal.volume }}</td>
+                  <td class="num">{{ formatPrice(deal.price) }}</td>
+                  <td class="num" [class.pos]="deal.profit > 0" [class.neg]="deal.profit < 0">
+                    {{ signed(deal.profit) }}
+                  </td>
+                  <td class="muted">{{ formatDateTime(deal.timeServer) }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      } @else {
+        <p class="text-xs muted">Sin ejecuciones registradas.</p>
+      }
+    </section>
+
+    <section class="panel">
+      <h3>Capturas de la operación</h3>
+      <app-image-gallery
+        ownerType="trade"
+        [ownerId]="t.id"
+        [images]="t.images"
+        [compact]="true"
+        (changed)="imagesChanged()"
+      />
+    </section>
+  </mat-dialog-content>
+
+  <mat-dialog-actions align="end">
+    <button mat-flat-button color="primary" (click)="close()">Cerrar</button>
+  </mat-dialog-actions>
+}

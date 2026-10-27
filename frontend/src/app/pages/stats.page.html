@@ -1,0 +1,343 @@
+@if (store.activeAccount(); as account) {
+  <div class="page">
+    <header class="page-head">
+      <div>
+        <div class="eyebrow">Rendimiento</div>
+        <h1>Estadísticas</h1>
+        <p class="text-sm muted">
+          {{ account.displayName }} · {{ account.server }} · análisis de tu ventaja operativa
+        </p>
+      </div>
+    </header>
+
+    <section class="card filters">
+      <div class="filter-grid">
+        <label class="date-field">
+          <span>Desde</span>
+          <input
+            type="date"
+            [value]="from()"
+            (change)="from.set($any($event.target).value)"
+          />
+        </label>
+        <label class="date-field">
+          <span>Hasta</span>
+          <input type="date" [value]="to()" (change)="to.set($any($event.target).value)" />
+        </label>
+
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="symbol-field">
+          <mat-label>Símbolos</mat-label>
+          <input
+            matInput
+            [(ngModel)]="draftSymbols"
+            placeholder="EURUSD, XAUUSD…"
+            (keyup.enter)="applySymbols()"
+          />
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="strategy-field">
+          <mat-label>Estrategias</mat-label>
+          <mat-select multiple [value]="strategyIds()" (selectionChange)="strategyIds.set($event.value)">
+            @for (strategy of store.strategies(); track strategy.id) {
+              @if (!strategy.archived) {
+                <mat-option [value]="strategy.id">{{ strategy.name }}</mat-option>
+              }
+            }
+          </mat-select>
+        </mat-form-field>
+
+        <button mat-flat-button color="primary" class="apply" (click)="applySymbols()">
+          Aplicar
+        </button>
+        <button mat-button (click)="reset()">Limpiar</button>
+      </div>
+
+      <div class="range-row">
+        <span class="text-xs muted">Rango rápido:</span>
+        <button type="button" class="range-chip" (click)="setRange(7)">7 días</button>
+        <button type="button" class="range-chip" (click)="setRange(30)">30 días</button>
+        <button type="button" class="range-chip" (click)="setRange(90)">90 días</button>
+        <button type="button" class="range-chip" (click)="setRange(365)">1 año</button>
+        <button type="button" class="range-chip" (click)="setRange(null)">Todo</button>
+      </div>
+    </section>
+
+    @if (loading()) {
+      <mat-progress-bar mode="indeterminate" class="page-progress" />
+    }
+
+    @if (stats(); as s) {
+      <div class="kpi-grid stats-kpis">
+        <div class="kpi" [class.pos]="s.summary.netProfit > 0" [class.neg]="s.summary.netProfit < 0">
+          <div class="kpi-label">Beneficio neto</div>
+          <div class="kpi-value" [class.pos]="s.summary.netProfit > 0" [class.neg]="s.summary.netProfit < 0">
+            {{ signed(s.summary.netProfit) }}
+          </div>
+          <div class="kpi-meta">{{ s.summary.totalTrades }} operaciones cerradas</div>
+        </div>
+        <div class="kpi" [class.pos]="s.summary.winRate >= 50" [class.neg]="s.summary.winRate < 50">
+          <div class="kpi-label">Win rate</div>
+          <div class="kpi-value">{{ percent(s.summary.winRate) }}</div>
+          <div class="kpi-meta">{{ s.summary.wins }}G · {{ s.summary.losses }}P · {{ s.summary.breakeven }}BE</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Profit factor</div>
+          <div class="kpi-value">{{ profitFactor(s.summary.profitFactor) }}</div>
+          <div class="kpi-meta">{{ money(s.summary.grossProfit) }} / {{ money(-s.summary.grossLoss) }}</div>
+        </div>
+        <div class="kpi" [class.pos]="s.summary.expectancy > 0" [class.neg]="s.summary.expectancy < 0">
+          <div class="kpi-label">Esperanza</div>
+          <div class="kpi-value" [class.pos]="s.summary.expectancy > 0" [class.neg]="s.summary.expectancy < 0">
+            {{ signed(s.summary.expectancy) }}
+          </div>
+          <div class="kpi-meta">por operación</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">R medio</div>
+          <div class="kpi-value" [class.pos]="(s.summary.avgR ?? 0) > 0" [class.neg]="(s.summary.avgR ?? 0) < 0">
+            {{ formatR(s.summary.avgR) }}
+          </div>
+          <div class="kpi-meta">Total {{ formatR(s.summary.totalR) }}</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Máx. drawdown</div>
+          <div class="kpi-value neg">{{ money(s.summary.maxDrawdown) }}</div>
+          <div class="kpi-meta">{{ percent(s.summary.maxDrawdownPct) }} sobre el pico</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Mejor / peor</div>
+          <div class="kpi-value">
+            <span class="pos">{{ signed(s.summary.bestTrade) }}</span>
+            <span class="muted"> / </span>
+            <span class="neg">{{ signed(s.summary.worstTrade) }}</span>
+          </div>
+          <div class="kpi-meta">operación individual</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Racha actual</div>
+          <div class="kpi-value" [class.pos]="s.summary.currentStreak > 0" [class.neg]="s.summary.currentStreak < 0">
+            {{ s.summary.currentStreak > 0 ? '+' : '' }}{{ s.summary.currentStreak }}
+          </div>
+          <div class="kpi-meta">
+            Máx. {{ s.summary.maxWinStreak }}G / {{ s.summary.maxLossStreak }}P
+          </div>
+        </div>
+      </div>
+
+      <div class="chart-grid">
+        <section class="card chart-card wide">
+          <div class="card-header">
+            <div class="card-title"><span class="material-symbols-outlined">show_chart</span>Curva de capital</div>
+            <span class="text-xs muted">{{ s.equity.length }} operaciones</span>
+          </div>
+          <div class="chart-body">
+            <app-chart [options]="equityOptions()" />
+          </div>
+        </section>
+
+        <section class="card chart-card">
+          <div class="card-header">
+            <div class="card-title"><span class="material-symbols-outlined">bar_chart</span>P&L diario</div>
+          </div>
+          <div class="chart-body">
+            <app-chart [options]="dailyOptions()" />
+          </div>
+        </section>
+
+        <section class="card chart-card">
+          <div class="card-header">
+            <div class="card-title"><span class="material-symbols-outlined">analytics</span>Distribución de R</div>
+            <span class="text-xs muted">{{ distributionTotal(s.rDistribution) }} ops</span>
+          </div>
+          <div class="chart-body">
+            <app-chart [options]="rOptions()" />
+          </div>
+        </section>
+
+        <section class="card monthly-card">
+          <div class="card-header">
+            <div class="card-title"><span class="material-symbols-outlined">calendar_month</span>Resultado mensual</div>
+          </div>
+          @if (s.monthly.length) {
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Mes</th>
+                    <th class="num">Ops</th>
+                    <th class="num">Win rate</th>
+                    <th class="num">Neto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (row of s.monthly; track row.month) {
+                    <tr>
+                      <td>{{ month(row.month) }}</td>
+                      <td class="num">{{ row.trades }}</td>
+                      <td class="num">{{ percent(row.winRate) }}</td>
+                      <td class="num" [class.pos]="row.net > 0" [class.neg]="row.net < 0">
+                        {{ signed(row.net) }}
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else {
+            <div class="empty-mini">Sin datos mensuales.</div>
+          }
+        </section>
+      </div>
+
+      <div class="breakdown-grid">
+        <section class="card">
+          <div class="card-header">
+            <div class="card-title"><span class="material-symbols-outlined">payments</span>Por símbolo</div>
+          </div>
+          @if (s.bySymbol.length) {
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Símbolo</th>
+                    <th class="num">Ops</th>
+                    <th class="num">Win</th>
+                    <th class="num">PF</th>
+                    <th class="num">R</th>
+                    <th class="num">Neto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (row of s.bySymbol; track row.key) {
+                    <tr>
+                      <td><strong>{{ row.label }}</strong></td>
+                      <td class="num">{{ row.trades }}</td>
+                      <td class="num">{{ percent(row.winRate) }}</td>
+                      <td class="num">{{ profitFactor(row.profitFactor) }}</td>
+                      <td class="num">{{ formatR(row.avgR) }}</td>
+                      <td class="num" [class.pos]="row.net > 0" [class.neg]="row.net < 0">{{ signed(row.net) }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else {
+            <div class="empty-mini">Sin operaciones en el periodo.</div>
+          }
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div class="card-title"><span class="material-symbols-outlined">rule</span>Por estrategia</div>
+          </div>
+          @if (s.byStrategy.length) {
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Estrategia</th>
+                    <th class="num">Ops</th>
+                    <th class="num">Win</th>
+                    <th class="num">PF</th>
+                    <th class="num">R</th>
+                    <th class="num">Neto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (row of s.byStrategy; track row.key) {
+                    <tr>
+                      <td><strong>{{ row.label }}</strong></td>
+                      <td class="num">{{ row.trades }}</td>
+                      <td class="num">{{ percent(row.winRate) }}</td>
+                      <td class="num">{{ profitFactor(row.profitFactor) }}</td>
+                      <td class="num">{{ formatR(row.avgR) }}</td>
+                      <td class="num" [class.pos]="row.net > 0" [class.neg]="row.net < 0">{{ signed(row.net) }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else {
+            <div class="empty-mini">Sin operaciones en el periodo.</div>
+          }
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div class="card-title"><span class="material-symbols-outlined">today</span>Por día de la semana</div>
+          </div>
+          @if (s.byWeekday.length) {
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Día</th>
+                    <th class="num">Ops</th>
+                    <th class="num">Win</th>
+                    <th class="num">Neto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (row of s.byWeekday; track row.key) {
+                    <tr>
+                      <td>{{ row.label }}</td>
+                      <td class="num">{{ row.trades }}</td>
+                      <td class="num">{{ percent(row.winRate) }}</td>
+                      <td class="num" [class.pos]="row.net > 0" [class.neg]="row.net < 0">{{ signed(row.net) }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else {
+            <div class="empty-mini">Sin datos.</div>
+          }
+        </section>
+
+        <section class="card">
+          <div class="card-header">
+            <div class="card-title"><span class="material-symbols-outlined">schedule</span>Por hora</div>
+          </div>
+          @if (s.byHour.length) {
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Hora</th>
+                    <th class="num">Ops</th>
+                    <th class="num">Win</th>
+                    <th class="num">Neto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (row of s.byHour; track row.key) {
+                    <tr>
+                      <td>{{ row.label }}</td>
+                      <td class="num">{{ row.trades }}</td>
+                      <td class="num">{{ percent(row.winRate) }}</td>
+                      <td class="num" [class.pos]="row.net > 0" [class.neg]="row.net < 0">{{ signed(row.net) }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else {
+            <div class="empty-mini">Sin datos.</div>
+          }
+        </section>
+      </div>
+    } @else if (!loading()) {
+      <div class="card empty-state">
+        <span class="material-symbols-outlined">query_stats</span>
+        <h3>Sin estadísticas</h3>
+        <p>No hay operaciones cerradas en el periodo seleccionado.</p>
+      </div>
+    }
+  </div>
+} @else {
+  <div class="card empty-state page">
+    <span class="material-symbols-outlined">person_off</span>
+    <h3>Sin cuenta activa</h3>
+    <p>Selecciona una cuenta para consultar sus estadísticas.</p>
+  </div>
+}

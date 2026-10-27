@@ -1,0 +1,21 @@
+{
+  "name": "plan-de-trading",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Diario de trading de escritorio con Tauri, Angular, SQLite y MetaTrader 5",
+  "scripts": {
+    "start": "npm --prefix frontend run start",
+    "build:web": "npm --prefix frontend run build",
+    "dev": "cross-env TAURI_APP_PATH=backend TAURI_FRONTEND_PATH=frontend tauri dev",
+    "build": "cross-env TAURI_APP_PATH=backend TAURI_FRONTEND_PATH=frontend tauri build",
+    "tauri": "cross-env TAURI_APP_PATH=backend TAURI_FRONTEND_PATH=frontend tauri",
+    "test": "npm --prefix frontend run test -- --watch=false",
+    "fmt:rust": "cargo fmt --manifest-path backend/Cargo.toml",
+    "check:rust": "cargo fmt --manifest-path backend/Cargo.toml --check && cargo clippy --manifest-path backend/Cargo.toml -- -D warnings",
+    "test:rust": "cargo test --manifest-path backend/Cargo.toml"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4",
+    "cross-env": "^10.1.0"
+  }
+}

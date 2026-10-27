@@ -1,0 +1,187 @@
+<div class="shell" [class.collapsed]="collapsed()">
+  <aside class="sidebar">
+    <a class="brand" routerLink="/dashboard" aria-label="Plan de Trading">
+      <span class="brand-mark">PT</span>
+      <span class="brand-copy">
+        <strong>Plan de Trading</strong>
+        <small>Diario &amp; analítica</small>
+      </span>
+    </a>
+
+    <nav class="nav" aria-label="Navegación principal">
+      @for (item of navItems; track item.route) {
+        <a
+          class="nav-link"
+          [routerLink]="item.route"
+          routerLinkActive="active"
+          [matTooltip]="collapsed() ? item.label : ''"
+          matTooltipPosition="right"
+        >
+          <span class="material-symbols-outlined">{{ item.icon }}</span>
+          <span class="nav-label">{{ item.label }}</span>
+          @if (item.route === '/cuentas' && hasPending()) {
+            <span class="nav-dot" [matTooltip]="store.pendingAccounts().length + ' cuenta(s) pendiente(s)'"></span>
+          }
+        </a>
+      }
+    </nav>
+
+    <div class="sidebar-foot">
+      @if (store.activeAccount(); as account) {
+        <div class="mini-account">
+          <span class="avatar small">{{ accountInitials() }}</span>
+          <div class="mini-copy">
+            <strong>{{ account.displayName }}</strong>
+            <small>{{ account.login }} · {{ account.server }}</small>
+          </div>
+        </div>
+      }
+      <div class="version">
+        <span class="material-symbols-outlined">verified_user</span>
+        <span>v{{ store.settings()?.version ?? '0.1.0' }}</span>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <button
+        mat-icon-button
+        class="icon-btn"
+        (click)="toggleSidebar()"
+        [matTooltip]="collapsed() ? 'Expandir menú' : 'Colapsar menú'"
+      >
+        <span class="material-symbols-outlined">{{ collapsed() ? 'menu' : 'menu_open' }}</span>
+      </button>
+
+      <div class="page-context">
+        <h1>{{ title() }}</h1>
+        <span>{{ today }}</span>
+      </div>
+
+      <div class="top-actions">
+        <button
+          mat-stroked-button
+          class="sync-btn"
+          (click)="sync()"
+          [disabled]="!store.activeAccount() || syncing()"
+        >
+          <span class="material-symbols-outlined" [class.spin]="syncing()">sync</span>
+          <span class="sync-label">Sincronizar</span>
+        </button>
+
+        <button class="status-pill" [class.online]="store.mt5Connected()" [matMenuTriggerFor]="statusMenu">
+          <span class="status-dot"></span>
+          <span>{{ store.mt5Connected() ? 'MT5 conectado' : 'MT5 sin conexión' }}</span>
+          <span class="material-symbols-outlined tiny">expand_more</span>
+        </button>
+
+        <button class="account-btn" [matMenuTriggerFor]="accountMenu">
+          <span class="avatar">{{ accountInitials() }}</span>
+          <span class="account-copy">
+            <strong>{{ store.activeAccount()?.displayName ?? 'Sin cuenta' }}</strong>
+            <small>
+              @if (store.activeAccount(); as account) {
+                {{ account.login }} · {{ account.currency }}
+              } @else {
+                Configura una cuenta
+              }
+            </small>
+          </span>
+          @if (hasPending()) {
+            <span class="pending-badge">{{ store.pendingAccounts().length }}</span>
+          }
+          <span class="material-symbols-outlined tiny">expand_more</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="content">
+      @if (store.loading()) {
+        <div class="loading-state">
+          <div class="spinner"></div>
+          <p>Cargando tu plan de trading…</p>
+        </div>
+      } @else if (store.error() && !store.settings()) {
+        <section class="fatal-card">
+          <span class="material-symbols-outlined">error</span>
+          <h2>No se pudo iniciar la aplicación</h2>
+          <p>{{ store.error() }}</p>
+          <button mat-flat-button color="primary" (click)="reload()">Reintentar</button>
+        </section>
+      } @else {
+        <router-outlet />
+      }
+    </main>
+  </div>
+</div>
+
+<mat-menu #statusMenu="matMenu" class="status-menu">
+  <div class="menu-head">
+    <span class="material-symbols-outlined" [class.text-pos]="store.mt5Connected()">
+      {{ store.mt5Connected() ? 'sensors' : 'sensors_off' }}
+    </span>
+    <div>
+      <strong>Puente MetaTrader 5</strong>
+      <small>127.0.0.1:{{ store.mt5()?.port ?? 4477 }}</small>
+    </div>
+  </div>
+  <button mat-menu-item disabled>
+    <span class="material-symbols-outlined">schedule</span>
+    <span>Último latido: {{ store.mt5()?.lastHeartbeatAt ?? 'nunca' }}</span>
+  </button>
+  <button mat-menu-item disabled>
+    <span class="material-symbols-outlined">terminal</span>
+    <span>EA: {{ store.mt5()?.eaVersion ?? 'sin versión' }}</span>
+  </button>
+  @if (store.mt5()?.error; as error) {
+    <button mat-menu-item disabled>
+      <span class="material-symbols-outlined text-neg">error</span>
+      <span>{{ error }}</span>
+    </button>
+  }
+  <button mat-menu-item routerLink="/ajustes">
+    <span class="material-symbols-outlined">settings</span>
+    <span>Configurar conexión</span>
+  </button>
+</mat-menu>
+
+<mat-menu #accountMenu="matMenu" class="account-menu">
+  <div class="menu-head">
+    <span class="material-symbols-outlined">account_balance_wallet</span>
+    <div>
+      <strong>Cuentas</strong>
+      <small>Cambia la cuenta activa</small>
+    </div>
+  </div>
+  @for (account of store.activeAccounts(); track account.id) {
+    <button mat-menu-item (click)="activateAccount(account.id)">
+      <span class="avatar tiny-avatar">{{ account.displayName.slice(0, 1) }}</span>
+      <span class="menu-account">
+        <strong>{{ account.displayName }}</strong>
+        <small>{{ account.login }} · {{ account.server }} · {{ money(account.balance) }}</small>
+      </span>
+      @if (account.id === store.activeAccount()?.id) {
+        <span class="material-symbols-outlined check">check</span>
+      }
+    </button>
+  }
+  @if (store.pendingAccounts().length) {
+    <div class="menu-separator"></div>
+    <div class="menu-caption">Pendientes de confirmar</div>
+    @for (account of store.pendingAccounts(); track account.id) {
+      <button mat-menu-item routerLink="/cuentas">
+        <span class="material-symbols-outlined warn">pending</span>
+        <span class="menu-account">
+          <strong>{{ account.displayName }}</strong>
+          <small>{{ account.login }} · {{ account.server }}</small>
+        </span>
+      </button>
+    }
+  }
+  <div class="menu-separator"></div>
+  <button mat-menu-item routerLink="/cuentas">
+    <span class="material-symbols-outlined">manage_accounts</span>
+    <span>Gestionar cuentas</span>
+  </button>
+</mat-menu>

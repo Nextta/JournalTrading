@@ -1,0 +1,158 @@
+.filters {
+  padding: 14px 16px 11px;
+  margin-bottom: 14px;
+}
+
+.filter-grid {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.date-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 5px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--surface-2);
+
+  span {
+    color: var(--muted-2);
+    font-size: 8.5px;
+    font-weight: 750;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  input {
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 11px;
+    outline: none;
+    color-scheme: dark;
+    cursor: pointer;
+  }
+}
+
+.symbol-field {
+  flex: 1 1 190px;
+  min-width: 170px;
+}
+
+.strategy-field {
+  width: 210px;
+}
+
+.apply {
+  height: 38px;
+}
+
+.range-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.range-chip {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 10px;
+  font-weight: 650;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--text);
+    border-color: var(--border-strong);
+    background: var(--surface-2);
+  }
+}
+
+.page-progress {
+  margin: -4px 0 12px;
+  border-radius: 999px;
+}
+
+.stats-kpis {
+  margin-bottom: 16px;
+
+  .kpi-value {
+    font-size: 19px;
+  }
+}
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.chart-card {
+  overflow: hidden;
+}
+
+.chart-card.wide {
+  grid-row: span 1;
+}
+
+.chart-body {
+  height: 280px;
+  padding: 10px 8px 4px;
+}
+
+.monthly-card {
+  overflow: hidden;
+}
+
+.breakdown-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.data-table {
+  min-width: 420px;
+}
+
+.empty-mini {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 130px;
+  padding: 20px;
+  color: var(--muted-2);
+  font-size: 11px;
+  text-align: center;
+}
+
+@media (max-width: 1240px) {
+  .chart-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .breakdown-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .strategy-field,
+  .symbol-field {
+    width: 100%;
+    flex: 1 1 100%;
+  }
+
+  .chart-body {
+    height: 240px;
+  }
+}

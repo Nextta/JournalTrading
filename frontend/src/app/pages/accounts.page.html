@@ -1,0 +1,214 @@
+<div class="page">
+  <header class="page-head">
+    <div>
+      <div class="eyebrow">Conexiones</div>
+      <h1>Cuentas</h1>
+      <p class="text-sm muted">
+        Gestiona las cuentas de MetaTrader 5 y el puente local con el Expert Advisor.
+      </p>
+    </div>
+    <div class="head-actions">
+      <button mat-stroked-button (click)="toggleArchived()">
+        <mat-icon>{{ showArchived() ? 'visibility_off' : 'visibility' }}</mat-icon>
+        {{ showArchived() ? 'Ocultar archivadas' : 'Ver archivadas' }}
+      </button>
+      <button mat-flat-button color="primary" (click)="create()">
+        <mat-icon>add</mat-icon>
+        Añadir cuenta
+      </button>
+    </div>
+  </header>
+
+  @if (store.mt5(); as mt5) {
+    <section class="card mt5-card" [class.online]="store.mt5Connected()">
+      <div class="mt5-head">
+        <div class="mt5-title">
+          <span class="status-dot" [class.online]="store.mt5Connected()"></span>
+          <div>
+            <h2>MetaTrader 5</h2>
+            <p>
+              @if (store.mt5Connected()) {
+                Conectado · heartbeat {{ timeAgo(mt5.lastHeartbeatAt) }}
+              } @else if (mt5.running) {
+                Servidor activo, esperando al EA en el puerto {{ mt5.port }}
+              } @else {
+                Servidor detenido{{ mt5.error ? ': ' + mt5.error : '' }}
+              }
+            </p>
+          </div>
+        </div>
+        <div class="mt5-actions">
+          <button mat-stroked-button [disabled]="restarting()" (click)="restartServer()">
+            <mat-icon>restart_alt</mat-icon>
+            {{ restarting() ? 'Reiniciando…' : 'Reiniciar servidor' }}
+          </button>
+          <button mat-button (click)="openDataDir()">
+            <mat-icon>folder_open</mat-icon>
+            Datos
+          </button>
+        </div>
+      </div>
+
+      <div class="mt5-grid">
+        <div>
+          <span>Puerto local</span>
+          <strong>{{ mt5.port }}</strong>
+        </div>
+        <div>
+          <span>EA</span>
+          <strong>{{ mt5.eaVersion || '—' }}</strong>
+        </div>
+        <div>
+          <span>Terminal</span>
+          <strong>{{ mt5.terminalBuild || '—' }}</strong>
+        </div>
+        <div>
+          <span>Login MT5</span>
+          <strong>{{ mt5.login || '—' }}</strong>
+        </div>
+        <div>
+          <span>Servidor MT5</span>
+          <strong>{{ mt5.server || '—' }}</strong>
+        </div>
+        <div>
+          <span>Último heartbeat</span>
+          <strong>{{ formatDateTime(mt5.lastHeartbeatAt) }}</strong>
+        </div>
+      </div>
+    </section>
+  }
+
+  @if (store.pendingAccounts().length) {
+    <section class="pending-section">
+      <div class="section-head">
+        <div>
+          <span class="eyebrow warning">Acción requerida</span>
+          <h2>Cuentas pendientes de confirmar</h2>
+        </div>
+      </div>
+      <div class="account-grid">
+        @for (account of store.pendingAccounts(); track account.id) {
+          <article class="card account-card pending">
+            <div class="account-head">
+              <span class="avatar">{{ accountInitials(account) }}</span>
+              <div class="account-title">
+                <h3>{{ account.displayName }}</h3>
+                <p>{{ account.login }} · {{ account.server }}</p>
+              </div>
+              <span class="pill pending">Pendiente</span>
+            </div>
+            <p class="pending-note">
+              El EA ha detectado esta cuenta. Confírmala para empezar a guardar su historial y
+              diario.
+            </p>
+            <div class="account-actions">
+              <button mat-flat-button color="primary" (click)="confirm(account)">
+                <mat-icon>check</mat-icon>
+                Confirmar cuenta
+              </button>
+              <button mat-icon-button matTooltip="Archivar" (click)="archive(account)">
+                <mat-icon>archive</mat-icon>
+              </button>
+            </div>
+          </article>
+        }
+      </div>
+    </section>
+  }
+
+  <section class="accounts-section">
+    <div class="section-head">
+      <div>
+        <span class="eyebrow">Cuentas activas</span>
+        <h2>Selecciona la cuenta de trabajo</h2>
+      </div>
+    </div>
+
+    @if (store.activeAccounts().length) {
+      <div class="account-grid">
+        @for (account of store.activeAccounts(); track account.id) {
+          <article class="card account-card" [class.current]="account.id === store.activeAccount()?.id">
+            <div class="account-head">
+              <span class="avatar">{{ accountInitials(account) }}</span>
+              <div class="account-title">
+                <h3>{{ account.displayName }}</h3>
+                <p>{{ account.login }} · {{ account.server }} · {{ account.currency }}</p>
+              </div>
+              @if (account.id === store.activeAccount()?.id) {
+                <span class="pill accent-pill">Activa</span>
+              }
+            </div>
+
+            <div class="balance-row">
+              <div>
+                <span>Balance</span>
+                <strong>{{ money(account.balance, account.currency) }}</strong>
+              </div>
+              <div>
+                <span>Equity</span>
+                <strong>{{ money(account.equity, account.currency) }}</strong>
+              </div>
+            </div>
+
+            <div class="account-meta">
+              <span class="material-symbols-outlined">schedule</span>
+              {{ account.lastHeartbeatAt ? 'Heartbeat ' + timeAgo(account.lastHeartbeatAt) : 'Sin conexión todavía' }}
+            </div>
+
+            <div class="account-actions">
+              @if (account.id !== store.activeAccount()?.id) {
+                <button mat-flat-button color="primary" [disabled]="busy()" (click)="use(account)">
+                  Usar esta cuenta
+                </button>
+              }
+              <button mat-icon-button matTooltip="Editar" (click)="edit(account)">
+                <mat-icon>edit</mat-icon>
+              </button>
+              <button mat-icon-button matTooltip="Archivar" (click)="archive(account)">
+                <mat-icon>archive</mat-icon>
+              </button>
+            </div>
+          </article>
+        }
+      </div>
+    } @else {
+      <div class="card empty-state">
+        <span class="material-symbols-outlined">account_balance_wallet</span>
+        <h3>Sin cuentas activas</h3>
+        <p>
+          Añade una cuenta manualmente o conecta el EA en MetaTrader 5 para detectarla
+          automáticamente.
+        </p>
+        <button mat-flat-button color="primary" (click)="create()">
+          <mat-icon>add</mat-icon>
+          Añadir cuenta
+        </button>
+      </div>
+    }
+  </section>
+
+  @if (showArchived() && store.archivedAccounts().length) {
+    <section class="accounts-section archived-section">
+      <div class="section-head">
+        <div>
+          <span class="eyebrow">Historial</span>
+          <h2>Cuentas archivadas</h2>
+        </div>
+      </div>
+      <div class="account-grid">
+        @for (account of store.archivedAccounts(); track account.id) {
+          <article class="card account-card archived">
+            <div class="account-head">
+              <span class="avatar">{{ accountInitials(account) }}</span>
+              <div class="account-title">
+                <h3>{{ account.displayName }}</h3>
+                <p>{{ account.login }} · {{ account.server }}</p>
+              </div>
+              <span class="pill">Archivada</span>
+            </div>
+          </article>
+        }
+      </div>
+    </section>
+  }
+</div>

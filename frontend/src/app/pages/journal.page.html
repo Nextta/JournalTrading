@@ -1,0 +1,426 @@
+@if (store.activeAccount(); as account) {
+  <div class="page">
+    <header class="page-head">
+      <div>
+        <div class="eyebrow">Diario de trading</div>
+        <h1>{{ formatDateLong(date()) }}</h1>
+        <p class="text-sm muted">
+          {{ account.displayName }} · {{ account.server }} · {{ account.currency }}
+          @if (date() === today) {
+            <span class="pill accent-pill">Hoy</span>
+          }
+        </p>
+      </div>
+      <div class="head-actions">
+        <div class="date-nav">
+          <button mat-icon-button matTooltip="Día anterior" (click)="moveDate(-1)">
+            <mat-icon>chevron_left</mat-icon>
+          </button>
+          <input
+            type="date"
+            class="date-input"
+            [value]="date()"
+            (change)="setDate($any($event.target).value)"
+          />
+          <button mat-icon-button matTooltip="Día siguiente" (click)="moveDate(1)">
+            <mat-icon>chevron_right</mat-icon>
+          </button>
+          @if (date() !== today) {
+            <button mat-stroked-button (click)="goToday()">Hoy</button>
+          }
+        </div>
+        <button mat-flat-button color="primary" (click)="addAsset()">
+          <mat-icon>add</mat-icon>
+          Añadir activo
+        </button>
+      </div>
+    </header>
+
+    @if (loading()) {
+      <mat-progress-bar mode="indeterminate" class="page-progress" />
+    }
+
+    @if (day(); as d) {
+      <div class="kpi-strip">
+        <div class="kpi">
+          <span>Resultado del día</span>
+          <strong [class.pos]="dayNet() > 0" [class.neg]="dayNet() < 0">{{ signed(dayNet()) }}</strong>
+          <small>{{ dayTrades().length }} operaciones</small>
+        </div>
+        <div class="kpi">
+          <span>Win rate</span>
+          <strong>{{ percent(dayWinRate()) }}</strong>
+          <small>{{ dayWins() }} ganadoras</small>
+        </div>
+        <div class="kpi">
+          <span>Activos</span>
+          <strong>{{ d.assets.length }}</strong>
+          <small>en el plan de hoy</small>
+        </div>
+        <div class="kpi checklist-kpi">
+          <span>Checklist</span>
+          <strong>{{ checklist().checked }}/{{ checklist().total }}</strong>
+          <mat-progress-bar mode="determinate" [value]="checklist().pct" />
+        </div>
+      </div>
+
+      <div class="journal-grid">
+        <section class="card general-journal">
+          <div class="card-head">
+            <div>
+              <span class="eyebrow">Bitácora</span>
+              <h2>Diario general del día</h2>
+            </div>
+            @if (savingJournal()) {
+              <span class="text-xs muted">Guardando…</span>
+            }
+          </div>
+          <app-journal-editor
+            [value]="d.journal.generalHtml"
+            [saving]="savingJournal()"
+            placeholder="Contexto del día, noticias, sesgos, errores y conclusiones…"
+            (save)="saveGeneralJournal($event)"
+          />
+        </section>
+
+        <aside class="side-stack">
+          <section class="card">
+            <div class="card-head">
+              <div>
+                <span class="eyebrow">Capturas</span>
+                <h2>Imágenes del día</h2>
+              </div>
+            </div>
+            <app-image-gallery
+              ownerType="day_journal"
+              [ownerId]="d.journal.id"
+              [images]="d.images"
+              (changed)="imagesChanged()"
+            />
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <div>
+                <span class="eyebrow">Mercado</span>
+                <h2>Posiciones abiertas</h2>
+              </div>
+              <span class="pill">{{ d.openTrades.length }}</span>
+            </div>
+            @if (d.openTrades.length) {
+              <div class="open-trades">
+                @for (trade of d.openTrades; track trade.id) {
+                  <div class="open-trade">
+                    <div class="open-trade-main">
+                      <span class="trade-symbol">{{ trade.symbol }}</span>
+                      <span
+                        class="side-badge"
+                        [class.buy]="trade.side === 'buy'"
+                        [class.sell]="trade.side === 'sell'"
+                      >
+                        {{ sideLabel(trade.side) }}
+                      </span>
+                    </div>
+                    <div class="open-trade-meta">
+                      {{ trade.volumeCurrent }} lotes · {{ formatPrice(trade.openPrice) }}
+                    </div>
+                    <div
+                      class="open-trade-pnl"
+                      [class.pos]="trade.profitNet > 0"
+                      [class.neg]="trade.profitNet < 0"
+                    >
+                      {{ signed(trade.profitNet) }}
+                    </div>
+                  </div>
+                }
+              </div>
+            } @else {
+              <div class="empty-mini">
+                <span class="material-symbols-outlined">check_circle</span>
+                <p>Sin posiciones abiertas</p>
+              </div>
+            }
+          </section>
+        </aside>
+      </div>
+
+      <section class="assets-section">
+        <div class="section-head">
+          <div>
+            <span class="eyebrow">Plan operativo</span>
+            <h2>Activos del día</h2>
+          </div>
+          <button mat-stroked-button (click)="addAsset()">
+            <mat-icon>add</mat-icon>
+            Añadir activo
+          </button>
+        </div>
+
+        @if (!d.assets.length) {
+          <div class="card empty-state">
+            <span class="material-symbols-outlined">query_stats</span>
+            <h3>Sin activos en el plan</h3>
+            <p>Añade el primer activo para construir su checklist, notas y capturas del día.</p>
+            <button mat-flat-button color="primary" (click)="addAsset()">
+              <mat-icon>add</mat-icon>
+              Añadir activo
+            </button>
+          </div>
+        } @else {
+          <div class="asset-stack">
+            @for (asset of d.assets; track asset.asset.id) {
+              <article class="card asset-card" [class.open]="isExpanded(asset.asset.id)">
+                <button
+                  type="button"
+                  class="asset-head"
+                  (click)="toggleExpanded(asset.asset.id)"
+                >
+                  <div class="asset-identity">
+                    <span class="strategy-dot" [style.background]="strategyColor(asset)"></span>
+                    <div>
+                      <h3>{{ asset.asset.symbol }}</h3>
+                      <p>{{ asset.strategyName || 'Sin estrategia asignada' }}</p>
+                    </div>
+                  </div>
+
+                  <div class="asset-metrics">
+                    <div>
+                      <span>Neto</span>
+                      <strong
+                        [class.pos]="asset.stats.netProfit > 0"
+                        [class.neg]="asset.stats.netProfit < 0"
+                      >
+                        {{ signed(asset.stats.netProfit) }}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Ops</span>
+                      <strong>{{ asset.stats.trades }}</strong>
+                    </div>
+                    <div>
+                      <span>Win</span>
+                      <strong>{{ percent(asset.stats.winRate) }}</strong>
+                    </div>
+                    <div class="asset-check">
+                      <span>Checklist</span>
+                      <strong>{{ checkedCount(asset.planItems) }}/{{ asset.planItems.length }}</strong>
+                      <mat-progress-bar
+                        mode="determinate"
+                        [value]="assetProgress(asset)"
+                      />
+                    </div>
+                  </div>
+
+                  <mat-icon class="chevron">
+                    {{ isExpanded(asset.asset.id) ? 'expand_less' : 'expand_more' }}
+                  </mat-icon>
+                </button>
+
+                @if (isExpanded(asset.asset.id)) {
+                  <div class="asset-body">
+                    <div class="asset-toolbar">
+                      <mat-form-field
+                        appearance="outline"
+                        class="strategy-select"
+                        subscriptSizing="dynamic"
+                      >
+                        <mat-label>Estrategia</mat-label>
+                        <mat-select
+                          [value]="asset.asset.strategyId"
+                          (selectionChange)="changeStrategy(asset, $event.value)"
+                        >
+                          <mat-option [value]="null">Sin estrategia</mat-option>
+                          @for (strategy of store.strategies(); track strategy.id) {
+                            @if (!strategy.archived || strategy.id === asset.asset.strategyId) {
+                              <mat-option [value]="strategy.id">{{ strategy.name }}</mat-option>
+                            }
+                          }
+                        </mat-select>
+                      </mat-form-field>
+                      <div class="toolbar-spacer"></div>
+                      <button
+                        mat-icon-button
+                        matTooltip="Eliminar activo del día"
+                        (click)="deleteAsset(asset)"
+                      >
+                        <mat-icon>delete_outline</mat-icon>
+                      </button>
+                    </div>
+
+                    <div class="asset-grid">
+                      <section class="panel">
+                        <div class="panel-head">
+                          <h4>Checklist</h4>
+                          <button mat-button (click)="startAddItem(asset.asset.id)">
+                            <mat-icon>add</mat-icon>
+                            Añadir punto
+                          </button>
+                        </div>
+
+                        @if (asset.planItems.length) {
+                          @for (section of sections(asset); track section.name) {
+                            <div class="check-section">
+                              <div class="check-section-title">{{ section.name }}</div>
+                              @for (item of section.items; track item.id) {
+                                <div class="check-row" [class.done]="item.checked">
+                                  <mat-checkbox
+                                    [checked]="item.checked"
+                                    (change)="toggleItem(asset, item, $event.checked)"
+                                  />
+                                  <span class="check-text">{{ item.text }}</span>
+                                  @if (item.required) {
+                                    <span class="req">Obligatorio</span>
+                                  }
+                                  <button
+                                    mat-icon-button
+                                    class="row-action"
+                                    matTooltip="Eliminar punto"
+                                    (click)="deleteItem(asset, item)"
+                                  >
+                                    <mat-icon>close</mat-icon>
+                                  </button>
+                                </div>
+                              }
+                            </div>
+                          }
+                        } @else {
+                          <div class="empty-mini compact">
+                            <p>
+                              {{
+                                asset.asset.strategyId
+                                  ? 'La estrategia no tiene puntos de checklist.'
+                                  : 'Asigna una estrategia para copiar su checklist.'
+                              }}
+                            </p>
+                          </div>
+                        }
+
+                        @if (newItemAssetId() === asset.asset.id) {
+                          <div class="new-item">
+                            <mat-form-field
+                              appearance="outline"
+                              subscriptSizing="dynamic"
+                              class="new-item-section"
+                            >
+                              <mat-label>Sección</mat-label>
+                              <input matInput [(ngModel)]="newItemSection" />
+                            </mat-form-field>
+                            <mat-form-field
+                              appearance="outline"
+                              subscriptSizing="dynamic"
+                              class="new-item-text"
+                            >
+                              <mat-label>Punto de la checklist</mat-label>
+                              <input
+                                matInput
+                                [(ngModel)]="newItemText"
+                                (keyup.enter)="submitAddItem(asset)"
+                              />
+                            </mat-form-field>
+                            <mat-checkbox [(ngModel)]="newItemRequired">Obligatorio</mat-checkbox>
+                            <div class="new-item-actions">
+                              <button mat-button (click)="cancelAddItem()">Cancelar</button>
+                              <button
+                                mat-flat-button
+                                color="primary"
+                                [disabled]="!newItemText.trim()"
+                                (click)="submitAddItem(asset)"
+                              >
+                                Añadir
+                              </button>
+                            </div>
+                          </div>
+                        }
+                      </section>
+
+                      <section class="panel">
+                        <div class="panel-head">
+                          <h4>Notas del activo</h4>
+                          @if (isAssetSaving(asset.asset.id)) {
+                            <span class="text-xs muted">Guardando…</span>
+                          }
+                        </div>
+                        <app-journal-editor
+                          [value]="asset.asset.journalHtml"
+                          [saving]="isAssetSaving(asset.asset.id)"
+                          [compact]="true"
+                          placeholder="Análisis, ejecución, gestión y conclusiones del activo…"
+                          (save)="saveAssetJournal(asset, $event)"
+                        />
+
+                        <div class="panel-subhead">
+                          <h4>Operaciones</h4>
+                          <span class="text-xs muted">{{ asset.trades.length }}</span>
+                        </div>
+                        @if (asset.trades.length) {
+                          <div class="trade-list">
+                            @for (trade of asset.trades; track trade.id) {
+                              <div class="trade-row">
+                                <span class="trade-time">
+                                  {{ formatDateTime(trade.closeTimeServer || trade.openTimeServer) }}
+                                </span>
+                                <span
+                                  class="side-badge"
+                                  [class.buy]="trade.side === 'buy'"
+                                  [class.sell]="trade.side === 'sell'"
+                                >
+                                  {{ sideLabel(trade.side) }}
+                                </span>
+                                <span class="trade-vol">{{ trade.volumeCurrent }}</span>
+                                <span class="trade-prices">
+                                  {{ formatPrice(trade.openPrice) }} →
+                                  {{ formatPrice(trade.closePrice) }}
+                                </span>
+                                <span class="trade-r">{{ formatR(trade.rMultiple) }}</span>
+                                <span
+                                  class="trade-result"
+                                  [class.pos]="trade.profitNet > 0"
+                                  [class.neg]="trade.profitNet < 0"
+                                >
+                                  {{ signed(trade.profitNet) }}
+                                </span>
+                              </div>
+                            }
+                          </div>
+                        } @else {
+                          <div class="empty-mini compact">
+                            <p>Sin operaciones vinculadas a este activo.</p>
+                          </div>
+                        }
+
+                        <div class="panel-subhead">
+                          <h4>Capturas</h4>
+                        </div>
+                        <app-image-gallery
+                          ownerType="day_asset"
+                          [ownerId]="asset.asset.id"
+                          [images]="asset.images"
+                          [compact]="true"
+                          (changed)="imagesChanged()"
+                        />
+                      </section>
+                    </div>
+                  </div>
+                }
+              </article>
+            }
+          </div>
+        }
+      </section>
+    } @else if (!loading()) {
+      <div class="card empty-state">
+        <span class="material-symbols-outlined">event_busy</span>
+        <h3>No se pudo cargar el día</h3>
+        <p>Comprueba la conexión con MetaTrader 5 o vuelve a intentarlo.</p>
+        <button mat-stroked-button (click)="setDate(date())">Reintentar</button>
+      </div>
+    }
+  </div>
+} @else {
+  <div class="card empty-state page">
+    <span class="material-symbols-outlined">person_off</span>
+    <h3>Sin cuenta activa</h3>
+    <p>Selecciona o confirma una cuenta de MetaTrader 5 para abrir el diario.</p>
+    <a mat-flat-button color="primary" routerLink="/cuentas">Ir a cuentas</a>
+  </div>
+}

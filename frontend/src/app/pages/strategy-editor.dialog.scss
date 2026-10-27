@@ -1,0 +1,147 @@
+.top-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 16px;
+}
+
+.color-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 6px;
+}
+
+.field-label {
+  color: var(--muted-2);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.color-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.color-swatch {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 120ms ease;
+
+  &:hover {
+    transform: translateY(-1px);
+  }
+
+  &.selected {
+    border-color: rgba(255, 255, 255, 0.75);
+  }
+
+  .material-symbols-outlined {
+    font-size: 16px;
+    color: #08111f;
+  }
+}
+
+.full {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.items-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 18px 0 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+
+  h3 {
+    font-size: 12px;
+    font-weight: 750;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 2px;
+  }
+}
+
+.items {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.items-empty {
+  padding: 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 9px;
+  text-align: center;
+}
+
+.item-row {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.item-section {
+  width: 130px;
+  font-size: 11.5px;
+}
+
+.item-text {
+  font-size: 11.5px;
+}
+
+.item-required {
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.item-remove {
+  color: var(--muted-2);
+
+  &:hover {
+    color: var(--neg);
+  }
+}
+
+@media (max-width: 640px) {
+  .top-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .item-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .item-section,
+  .item-text {
+    grid-column: 1;
+    width: 100%;
+  }
+
+  .item-required {
+    grid-column: 1;
+  }
+
+  .item-remove {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}

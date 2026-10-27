@@ -1,0 +1,335 @@
+@if (!store.activeAccount()) {
+  <section class="page">
+    <div class="onboarding card">
+      <div class="onboarding-mark">
+        <span class="material-symbols-outlined">rocket_launch</span>
+      </div>
+      <span class="eyebrow">Primeros pasos</span>
+      <h1>Empieza tu plan de trading</h1>
+      <p>
+        Conecta tu cuenta de MetaTrader 5 con el puente local. El EA enviará tus operaciones,
+        el diario las organizará por día y activo, y podrás revisar tus estadísticas reales.
+      </p>
+      <div class="steps">
+        <div class="step">
+          <span>1</span>
+          <div>
+            <strong>Configura la conexión</strong>
+            <small>Copia la API key y el puerto desde Ajustes.</small>
+          </div>
+        </div>
+        <div class="step">
+          <span>2</span>
+          <div>
+            <strong>Instala el EA en MT5</strong>
+            <small>Abre una cuenta y deja el asesor en el gráfico.</small>
+          </div>
+        </div>
+        <div class="step">
+          <span>3</span>
+          <div>
+            <strong>Confirma la cuenta</strong>
+            <small>La cuenta aparecerá como pendiente y podrás activarla.</small>
+          </div>
+        </div>
+      </div>
+      <div class="onboarding-actions">
+        <a mat-flat-button color="primary" routerLink="/ajustes">
+          <span class="material-symbols-outlined">settings</span>
+          Abrir ajustes
+        </a>
+        <a mat-stroked-button routerLink="/cuentas">
+          <span class="material-symbols-outlined">account_balance_wallet</span>
+          Gestionar cuentas
+        </a>
+      </div>
+      @if (store.pendingAccounts().length) {
+        <div class="pending-note">
+          <span class="material-symbols-outlined">pending</span>
+          Hay {{ store.pendingAccounts().length }} cuenta(s) esperando confirmación.
+          <a routerLink="/cuentas">Revisar</a>
+        </div>
+      }
+    </div>
+  </section>
+} @else {
+  <section class="page">
+    <div class="page-head">
+      <div class="page-head-copy">
+        <span class="eyebrow">
+          <span class="material-symbols-outlined">waving_hand</span>
+          {{ greeting }}
+        </span>
+        <h1 class="page-title">Tu centro de mando</h1>
+        <p class="page-subtitle">
+          {{ todayLabel }} · {{ store.activeAccount()?.displayName }} ·
+          {{ store.activeAccount()?.login }} en {{ store.activeAccount()?.server }}
+        </p>
+      </div>
+      <div class="page-actions">
+        <div class="segmented" role="group" aria-label="Periodo de estadísticas">
+          <button type="button" [class.active]="period() === 'month'" (click)="setPeriod('month')">Mes</button>
+          <button type="button" [class.active]="period() === '30d'" (click)="setPeriod('30d')">30 días</button>
+          <button type="button" [class.active]="period() === 'year'" (click)="setPeriod('year')">Año</button>
+        </div>
+        <a mat-flat-button color="primary" routerLink="/diario">
+          <span class="material-symbols-outlined">edit_note</span>
+          Diario de hoy
+        </a>
+      </div>
+    </div>
+
+    <div class="hero-grid">
+      <article class="card account-hero">
+        <div class="hero-glow"></div>
+        <div class="hero-top">
+          <div>
+            <span class="eyebrow">Cuenta activa</span>
+            <h2>{{ store.activeAccount()?.displayName }}</h2>
+            <p>{{ store.activeAccount()?.login }} · {{ store.activeAccount()?.server }}</p>
+          </div>
+          <span class="pill" [class.accent]="store.mt5Connected()" [class.pending]="!store.mt5Connected()">
+            <span class="badge-dot"></span>
+            {{ store.mt5Connected() ? 'Sincronizando' : 'Sin conexión' }}
+          </span>
+        </div>
+
+        <div class="balance-row">
+          <div class="balance-item">
+            <span>Balance</span>
+            <strong>{{ money(accountBalance()) }}</strong>
+          </div>
+          <div class="balance-item">
+            <span>Equity</span>
+            <strong>{{ money(accountEquity()) }}</strong>
+          </div>
+          <div class="balance-item">
+            <span>P&amp;L flotante</span>
+            <strong [class.pos]="openPnl() > 0" [class.neg]="openPnl() < 0">
+              {{ signed(openPnl()) }}
+            </strong>
+          </div>
+        </div>
+
+        <div class="hero-footer">
+          <div class="today-result">
+            <div class="today-icon" [class.pos]="dayNet() > 0" [class.neg]="dayNet() < 0">
+              <span class="material-symbols-outlined">
+                {{ dayNet() > 0 ? 'trending_up' : dayNet() < 0 ? 'trending_down' : 'remove' }}
+              </span>
+            </div>
+            <div>
+              <span class="text-xs muted">Resultado de hoy</span>
+              <strong [class.pos]="dayNet() > 0" [class.neg]="dayNet() < 0">{{ signed(dayNet()) }}</strong>
+              <small class="muted text-xs">
+                {{ dayTrades().length }} cerradas · {{ dayWins() }} ganadas
+              </small>
+            </div>
+          </div>
+          <a mat-stroked-button routerLink="/operaciones">Ver operaciones</a>
+        </div>
+      </article>
+
+      <article class="card plan-card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">
+              <span class="material-symbols-outlined">checklist</span>
+              Plan de hoy
+            </div>
+            <div class="card-sub">
+              {{ checklist().checked }} de {{ checklist().total }} comprobaciones completadas
+            </div>
+          </div>
+          <span class="pill accent">{{ checklist().pct | number: '1.0-0' }}%</span>
+        </div>
+        <div class="card-body">
+          <mat-progress-bar mode="determinate" [value]="checklist().pct"></mat-progress-bar>
+          <div class="asset-mini-list">
+            @for (asset of day()?.assets ?? []; track asset.asset.id) {
+              <a class="asset-mini" routerLink="/diario">
+                <span class="symbol">{{ asset.asset.symbol }}</span>
+                <span class="strategy">{{ asset.strategyName ?? 'Sin estrategia' }}</span>
+                <span class="mini-progress">
+                  {{ asset.planItems.length ? checkedCount(asset.planItems) + '/' + asset.planItems.length : '—' }}
+                </span>
+              </a>
+            } @empty {
+              <div class="empty plan-empty">
+                <span class="material-symbols-outlined">playlist_add</span>
+                <strong>Aún no hay activos en el plan de hoy</strong>
+                <p>Añade el primer activo desde el diario y asigna una estrategia.</p>
+                <a mat-stroked-button routerLink="/diario">Abrir diario</a>
+              </div>
+            }
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <div class="middle-grid">
+      <article class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">
+              <span class="material-symbols-outlined">show_chart</span>
+              Curva de resultados
+            </div>
+            <div class="card-sub">
+              {{ periodLabel() }} · {{ stats()?.summary?.totalTrades ?? 0 }} operaciones cerradas
+            </div>
+          </div>
+          <span class="pill" [class.pos]="(stats()?.summary?.netProfit ?? 0) > 0" [class.neg]="(stats()?.summary?.netProfit ?? 0) < 0">
+            {{ signed(stats()?.summary?.netProfit ?? 0) }}
+          </span>
+        </div>
+        <div class="card-body chart-body">
+          @if ((stats()?.equity?.length ?? 0) > 1) {
+            <div class="chart-box"><app-chart [options]="equityOptions()" /></div>
+          } @else {
+            <div class="empty">
+              <span class="material-symbols-outlined">timeline</span>
+              <strong>Todavía no hay suficientes datos</strong>
+              <p>Cuando se registren operaciones cerradas verás aquí tu evolución.</p>
+            </div>
+          }
+        </div>
+      </article>
+
+      <article class="card performance-card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">
+              <span class="material-symbols-outlined">monitoring</span>
+              Rendimiento
+            </div>
+            <div class="card-sub">{{ periodLabel() }}</div>
+          </div>
+        </div>
+        <div class="card-body performance-grid">
+          <div class="perf">
+            <span>Win rate</span>
+            <strong>{{ percent(stats()?.summary?.winRate) }}</strong>
+            <small>{{ stats()?.summary?.wins ?? 0 }}G / {{ stats()?.summary?.losses ?? 0 }}P</small>
+          </div>
+          <div class="perf">
+            <span>Profit factor</span>
+            <strong>{{ profitFactorText() }}</strong>
+            <small>Beneficio / pérdida bruta</small>
+          </div>
+          <div class="perf">
+            <span>R medio</span>
+            <strong [class.pos]="(stats()?.summary?.avgR ?? 0) > 0" [class.neg]="(stats()?.summary?.avgR ?? 0) < 0">
+              {{ avgRText() }}
+            </strong>
+            <small>Total {{ formatR(stats()?.summary?.totalR ?? 0) }}</small>
+          </div>
+          <div class="perf">
+            <span>Máx. drawdown</span>
+            <strong class="neg">{{ money(stats()?.summary?.maxDrawdown ?? 0) }}</strong>
+            <small>{{ percent(stats()?.summary?.maxDrawdownPct) }} sobre el pico</small>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <div class="bottom-grid">
+      <article class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">
+              <span class="material-symbols-outlined">sensors</span>
+              Operaciones abiertas
+            </div>
+            <div class="card-sub">{{ openTrades().length }} posiciones en el mercado</div>
+          </div>
+          <span class="pill" [class.pos]="openPnl() > 0" [class.neg]="openPnl() < 0">{{ signed(openPnl()) }}</span>
+        </div>
+        @if (openTrades().length) {
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Activo</th>
+                  <th>Dirección</th>
+                  <th class="num">Volumen</th>
+                  <th class="num">Apertura</th>
+                  <th class="num">SL / TP</th>
+                  <th class="num">P&amp;L</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (trade of openTrades(); track trade.id) {
+                  <tr>
+                    <td>
+                      <strong>{{ trade.symbol }}</strong>
+                      <div class="text-xs muted">{{ formatDateTime(trade.openTimeServer) }}</div>
+                    </td>
+                    <td><span class="pill" [class.buy]="trade.side === 'buy'" [class.sell]="trade.side === 'sell'">{{ sideLabel(trade.side) }}</span></td>
+                    <td class="num">{{ trade.volumeCurrent | number: '1.2-2' }}</td>
+                    <td class="num">{{ formatPrice(trade.openPrice) }}</td>
+                    <td class="num text-xs muted">
+                      {{ trade.sl ? formatPrice(trade.sl) : '—' }} / {{ trade.tp ? formatPrice(trade.tp) : '—' }}
+                    </td>
+                    <td class="num" [class.pos]="trade.profitNet > 0" [class.neg]="trade.profitNet < 0">{{ signed(trade.profitNet) }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        } @else {
+          <div class="empty">
+            <span class="material-symbols-outlined">coffee</span>
+            <strong>Sin operaciones abiertas</strong>
+            <p>El EA actualizará esta lista en cuanto haya posiciones en MetaTrader.</p>
+          </div>
+        }
+      </article>
+
+      <article class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">
+              <span class="material-symbols-outlined">history</span>
+              Últimas operaciones
+            </div>
+            <div class="card-sub">Cierres más recientes de la cuenta</div>
+          </div>
+          <a mat-button routerLink="/operaciones">Ver todas</a>
+        </div>
+        @if (recent().length) {
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Cierre</th>
+                  <th>Activo</th>
+                  <th>Dirección</th>
+                  <th class="num">Neto</th>
+                  <th class="num">R</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (trade of recent(); track trade.id) {
+                  <tr>
+                    <td class="text-xs muted">{{ formatDateTime(trade.closeTimeServer) }}</td>
+                    <td><strong>{{ trade.symbol }}</strong></td>
+                    <td><span class="pill" [class.buy]="trade.side === 'buy'" [class.sell]="trade.side === 'sell'">{{ sideLabel(trade.side) }}</span></td>
+                    <td class="num" [class.pos]="trade.profitNet > 0" [class.neg]="trade.profitNet < 0">{{ signed(trade.profitNet) }}</td>
+                    <td class="num">{{ formatR(trade.rMultiple) }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        } @else {
+          <div class="empty">
+            <span class="material-symbols-outlined">receipt_long</span>
+            <strong>Sin operaciones registradas</strong>
+            <p>Conecta el EA o revisa que la cuenta esté confirmada.</p>
+          </div>
+        }
+      </article>
+    </div>
+  </section>
+}

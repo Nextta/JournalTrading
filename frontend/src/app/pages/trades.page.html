@@ -1,0 +1,199 @@
+@if (store.activeAccount(); as account) {
+  <div class="page">
+    <header class="page-head">
+      <div>
+        <div class="eyebrow">Historial</div>
+        <h1>Operaciones</h1>
+        <p class="text-sm muted">
+          {{ account.displayName }} · {{ account.server }} · todas las operaciones capturadas por el EA
+        </p>
+      </div>
+      <div class="head-summary">
+        <div>
+          <span>Total</span>
+          <strong>{{ page().total }}</strong>
+        </div>
+        <div>
+          <span>Neto (página)</span>
+          <strong [class.pos]="netTotal() > 0" [class.neg]="netTotal() < 0">{{ signed(netTotal()) }}</strong>
+        </div>
+        <div>
+          <span>Win rate</span>
+          <strong>{{ percent(winRate()) }}</strong>
+        </div>
+      </div>
+    </header>
+
+    <section class="card filters">
+      <div class="filter-grid">
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="filter-search">
+          <mat-label>Buscar</mat-label>
+          <mat-icon matPrefix>search</mat-icon>
+          <input
+            matInput
+            [(ngModel)]="draftSearch"
+            placeholder="Símbolo, comentario…"
+            (keyup.enter)="applySearch()"
+          />
+        </mat-form-field>
+
+        <label class="date-field">
+          <span>Desde</span>
+          <input
+            type="date"
+            [value]="from()"
+            (change)="from.set($any($event.target).value); offset.set(0)"
+          />
+        </label>
+        <label class="date-field">
+          <span>Hasta</span>
+          <input
+            type="date"
+            [value]="to()"
+            (change)="to.set($any($event.target).value); offset.set(0)"
+          />
+        </label>
+
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="filter-select">
+          <mat-label>Estado</mat-label>
+          <mat-select [value]="state()" (selectionChange)="state.set($event.value); offset.set(0)">
+            <mat-option [value]="null">Todas</mat-option>
+            <mat-option value="closed">Cerradas</mat-option>
+            <mat-option value="open">Abiertas</mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="filter-select">
+          <mat-label>Estrategia</mat-label>
+          <mat-select
+            [value]="strategyId()"
+            (selectionChange)="strategyId.set($event.value); offset.set(0)"
+          >
+            <mat-option [value]="null">Todas</mat-option>
+            @for (strategy of strategies(); track strategy.id) {
+              <mat-option [value]="strategy.id">{{ strategy.name }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+
+        <button mat-flat-button color="primary" class="apply" (click)="applySearch()">
+          Aplicar
+        </button>
+        <button mat-button (click)="resetFilters()">Limpiar</button>
+      </div>
+
+      <div class="range-row">
+        <span class="text-xs muted">Rango rápido:</span>
+        <button type="button" class="range-chip" (click)="setRange(7)">7 días</button>
+        <button type="button" class="range-chip" (click)="setRange(30)">30 días</button>
+        <button type="button" class="range-chip" (click)="setRange(90)">90 días</button>
+        <button type="button" class="range-chip" (click)="setRange(null)">Todo</button>
+      </div>
+    </section>
+
+    @if (loading()) {
+      <mat-progress-bar mode="indeterminate" class="page-progress" />
+    }
+
+    <section class="card table-card">
+      @if (page().items.length) {
+        <div class="table-scroll">
+          <table class="data-table trades-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Activo</th>
+                <th>Lado</th>
+                <th class="num">Vol.</th>
+                <th class="num">Entrada</th>
+                <th class="num">Salida</th>
+                <th>Duración</th>
+                <th>Estrategia</th>
+                <th class="num">R</th>
+                <th class="num">Neto</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (trade of page().items; track trade.id) {
+                <tr class="clickable" (click)="openTrade(trade)">
+                  <td>
+                    <div class="date-cell">
+                      <strong>{{ formatDateShort(trade.openTimeServer.slice(0, 10)) }}</strong>
+                      <span>{{ formatTime(trade.openTimeServer) }}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="symbol-cell">
+                      <strong>{{ trade.symbol }}</strong>
+                      @if (trade.state === 'open') {
+                        <span class="pill accent-pill">Abierta</span>
+                      }
+                    </div>
+                  </td>
+                  <td>
+                    <span
+                      class="side-badge"
+                      [class.buy]="trade.side === 'buy'"
+                      [class.sell]="trade.side === 'sell'"
+                    >
+                      {{ sideLabel(trade.side) }}
+                    </span>
+                  </td>
+                  <td class="num">{{ trade.volumeCurrent }}</td>
+                  <td class="num">{{ formatPrice(trade.openPrice) }}</td>
+                  <td class="num">{{ formatPrice(trade.closePrice) }}</td>
+                  <td class="muted">{{ formatDuration(duration(trade)) }}</td>
+                  <td>
+                    <span class="strategy-chip">
+                      <i [style.background]="strategyColor(trade)"></i>
+                      {{ strategyName(trade) }}
+                    </span>
+                  </td>
+                  <td class="num" [class.pos]="(trade.rMultiple ?? 0) > 0" [class.neg]="(trade.rMultiple ?? 0) < 0">
+                    {{ formatR(trade.rMultiple) }}
+                  </td>
+                  <td class="num" [class.pos]="trade.profitNet > 0" [class.neg]="trade.profitNet < 0">
+                    {{ signed(trade.profitNet) }}
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <div class="table-foot">
+          <span class="text-xs muted">
+            Mostrando {{ offset() + 1 }}–{{ offset() + page().items.length }} de
+            {{ page().total }}
+          </span>
+          <div class="pager">
+            <button mat-icon-button [disabled]="offset() === 0" (click)="prevPage()">
+              <mat-icon>chevron_left</mat-icon>
+            </button>
+            <span class="text-xs">Página {{ pageNumber() }} de {{ pageCount() }}</span>
+            <button
+              mat-icon-button
+              [disabled]="offset() + limit >= page().total"
+              (click)="nextPage()"
+            >
+              <mat-icon>chevron_right</mat-icon>
+            </button>
+          </div>
+        </div>
+      } @else if (!loading()) {
+        <div class="empty-state">
+          <span class="material-symbols-outlined">receipt_long</span>
+          <h3>Sin operaciones</h3>
+          <p>No hay operaciones que coincidan con los filtros seleccionados.</p>
+          <button mat-stroked-button (click)="resetFilters()">Limpiar filtros</button>
+        </div>
+      }
+    </section>
+  </div>
+} @else {
+  <div class="card empty-state page">
+    <span class="material-symbols-outlined">person_off</span>
+    <h3>Sin cuenta activa</h3>
+    <p>Selecciona una cuenta para consultar sus operaciones.</p>
+  </div>
+}

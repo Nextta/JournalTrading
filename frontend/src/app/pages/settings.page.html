@@ -1,0 +1,163 @@
+<div class="page">
+  <header class="page-head">
+    <div>
+      <div class="eyebrow">Configuración</div>
+      <h1>Ajustes</h1>
+      <p class="text-sm muted">
+        Puerto del puente local, seguridad, copias de seguridad y ubicación de los datos.
+      </p>
+    </div>
+  </header>
+
+  @if (settings(); as settings) {
+    <div class="settings-grid">
+      <section class="card settings-card">
+        <div class="card-header">
+          <div class="card-title"><span class="material-symbols-outlined">lan</span>Puente local MT5</div>
+          @if (settings.mt5.connected) {
+            <span class="pill accent-pill">EA conectado</span>
+          } @else {
+            <span class="pill">Sin conexión</span>
+          }
+        </div>
+        <div class="settings-body">
+          <div class="form-grid">
+            <mat-form-field appearance="outline" subscriptSizing="dynamic">
+              <mat-label>Puerto HTTP</mat-label>
+              <input matInput type="number" [(ngModel)]="port" min="1024" max="65535" />
+              <mat-hint>El EA enviará los datos a este puerto local.</mat-hint>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" subscriptSizing="dynamic">
+              <mat-label>Zona horaria</mat-label>
+              <mat-select [(ngModel)]="timezoneMode">
+                <mat-option value="broker">Hora del bróker</mat-option>
+                <mat-option value="local">Hora local del equipo</mat-option>
+              </mat-select>
+              <mat-hint>Se usa para agrupar las operaciones por día.</mat-hint>
+            </mat-form-field>
+          </div>
+
+          <div class="endpoint">
+            <span>Endpoint para el EA</span>
+            <div class="endpoint-row">
+              <code>{{ endpoint() }}</code>
+              <button mat-icon-button matTooltip="Copiar endpoint" (click)="copy(endpoint())">
+                <mat-icon>content_copy</mat-icon>
+              </button>
+            </div>
+          </div>
+
+          <div class="settings-actions">
+            <button mat-flat-button color="primary" [disabled]="saving()" (click)="save()">
+              {{ saving() ? 'Guardando…' : 'Guardar ajustes' }}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card settings-card">
+        <div class="card-header">
+          <div class="card-title"><span class="material-symbols-outlined">key</span>Seguridad</div>
+        </div>
+        <div class="settings-body">
+          <p class="text-xs muted help">
+            El EA debe enviar esta clave en la cabecera <code>X-Api-Key</code>. No la compartas
+            fuera de tu equipo.
+          </p>
+
+          <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full">
+            <mat-label>API key</mat-label>
+            <input matInput readonly [value]="maskedKey(settings.apiKey)" />
+            <button
+              mat-icon-button
+              matSuffix
+              type="button"
+              matTooltip="{{ showKey() ? 'Ocultar' : 'Mostrar' }}"
+              (click)="showKey.set(!showKey())"
+            >
+              <mat-icon>{{ showKey() ? 'visibility_off' : 'visibility' }}</mat-icon>
+            </button>
+            <button
+              mat-icon-button
+              matSuffix
+              type="button"
+              matTooltip="Copiar API key"
+              (click)="copy(settings.apiKey)"
+            >
+              <mat-icon>content_copy</mat-icon>
+            </button>
+          </mat-form-field>
+
+          <button mat-stroked-button color="warn" [disabled]="regenerating()" (click)="regenerate()">
+            <mat-icon>autorenew</mat-icon>
+            {{ regenerating() ? 'Generando…' : 'Regenerar API key' }}
+          </button>
+        </div>
+      </section>
+
+      <section class="card settings-card">
+        <div class="card-header">
+          <div class="card-title"><span class="material-symbols-outlined">database</span>Datos y copias</div>
+        </div>
+        <div class="settings-body">
+          <div class="data-dir">
+            <span>Directorio de datos</span>
+            <code>{{ settings.dataDir }}</code>
+          </div>
+          <div class="button-row">
+            <button mat-stroked-button (click)="openDataDir()">
+              <mat-icon>folder_open</mat-icon>
+              Abrir carpeta
+            </button>
+            <button mat-flat-button color="primary" [disabled]="backingUp()" (click)="backup()">
+              <mat-icon>backup</mat-icon>
+              {{ backingUp() ? 'Creando copia…' : 'Crear copia de seguridad' }}
+            </button>
+          </div>
+          <p class="text-xs muted help">
+            La copia se guarda como archivo SQLite dentro de la carpeta <code>backups</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="card settings-card">
+        <div class="card-header">
+          <div class="card-title"><span class="material-symbols-outlined">info</span>Aplicación</div>
+        </div>
+        <div class="settings-body">
+          <dl class="about-list">
+            <div><dt>Versión</dt><dd>{{ settings.version }}</dd></div>
+            <div><dt>Puerto activo</dt><dd>{{ settings.apiPort }}</dd></div>
+            <div><dt>Servidor MT5</dt><dd>{{ settings.mt5.running ? 'Activo' : 'Detenido' }}</dd></div>
+            <div><dt>EA</dt><dd>{{ settings.mt5.eaVersion || '—' }}</dd></div>
+            <div><dt>Terminal build</dt><dd>{{ settings.mt5.terminalBuild || '—' }}</dd></div>
+            <div><dt>Cuenta activa</dt><dd>{{ store.activeAccount()?.displayName || '—' }}</dd></div>
+          </dl>
+        </div>
+      </section>
+    </div>
+
+    <section class="card instructions">
+      <div class="card-header">
+        <div class="card-title"><span class="material-symbols-outlined">integration_instructions</span>Cómo conectar MetaTrader 5</div>
+      </div>
+      <div class="settings-body">
+        <ol>
+          <li>Compila <code>TradingJournalBridge.mq5</code> en MetaEditor y adjúntalo a un gráfico.</li>
+          <li>
+            En las propiedades del EA, configura el endpoint
+            <code>{{ endpoint() }}</code> y la API key.
+          </li>
+          <li>Activa el trading algorítmico y deja el terminal abierto.</li>
+          <li>El EA enviará un heartbeat cada 5 segundos y sincronizará el historial automáticamente.</li>
+        </ol>
+      </div>
+    </section>
+  } @else {
+    <div class="card empty-state">
+      <span class="material-symbols-outlined">settings</span>
+      <h3>Cargando ajustes…</h3>
+    </div>
+  }
+</div>
