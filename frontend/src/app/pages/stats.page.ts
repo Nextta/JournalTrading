@@ -213,7 +213,7 @@ export class StatsPage {
 
   constructor() {
     effect(() => {
-      this.store.activeAccount()?.id;
+      this.store.activeAccountId();
       this.store.dataVersion();
       this.from();
       this.to();
@@ -224,8 +224,8 @@ export class StatsPage {
   }
 
   private async load(): Promise<void> {
-    const account = this.store.activeAccount();
-    if (!account) {
+    const accountId = this.store.activeAccountId();
+    if (!accountId) {
       this.stats.set(null);
       return;
     }
@@ -233,7 +233,7 @@ export class StatsPage {
     this.loading.set(true);
     try {
       const filter: StatsFilter = {
-        accountId: account.id,
+        accountId,
         from: this.from() || null,
         to: this.to() || null,
         symbols: this.symbols(),

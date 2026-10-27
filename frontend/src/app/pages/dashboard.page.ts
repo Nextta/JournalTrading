@@ -164,7 +164,7 @@ export class DashboardPage {
 
   constructor() {
     effect(() => {
-      this.store.activeAccount()?.id;
+      this.store.activeAccountId();
       this.store.dataVersion();
       this.period();
       void this.load();
@@ -172,8 +172,8 @@ export class DashboardPage {
   }
 
   private async load(): Promise<void> {
-    const account = this.store.activeAccount();
-    if (!account) {
+    const accountId = this.store.activeAccountId();
+    if (!accountId) {
       this.day.set(null);
       this.stats.set(null);
       this.recent.set([]);
@@ -183,14 +183,14 @@ export class DashboardPage {
     this.loading.set(true);
     try {
       const [day, stats, page] = await Promise.all([
-        this.api.getDay(account.id, this.today),
+        this.api.getDay(accountId, this.today),
         this.api.getStats({
-          accountId: account.id,
+          accountId,
           from: this.rangeFrom(),
           to: this.today,
         }),
         this.api.listTrades({
-          accountId: account.id,
+          accountId,
           state: 'closed',
           limit: 6,
           offset: 0,

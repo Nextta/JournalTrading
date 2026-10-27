@@ -37,6 +37,7 @@ import {
   sideLabel,
   todayIso,
 } from '../core/format';
+import { dayFingerprint } from '../core/journal-day';
 import type { DayAssetView, DayView, PlanItem, Strategy } from '../core/models';
 import { NotificationsService } from '../core/notifications.service';
 import { Store } from '../core/store';
@@ -100,6 +101,8 @@ export class JournalPage {
   protected newItemText = '';
   protected newItemRequired = false;
   private requestId = 0;
+  private loadedKey: string | null = null;
+  private dayHash = '';
 
   protected readonly dayTrades = computed(() => {
     const trades = this.day()?.assets.flatMap((asset) => asset.trades) ?? [];
@@ -138,28 +141,41 @@ export class JournalPage {
 
   constructor() {
     effect(() => {
-      this.store.activeAccount()?.id;
+      const accountId = this.store.activeAccountId();
+      const date = this.date();
       this.store.dataVersion();
-      this.date();
-      void this.load();
+      void this.load(accountId, date);
     });
   }
 
-  private async load(): Promise<void> {
-    const account = this.store.activeAccount();
-    if (!account) {
+  private async load(
+    accountId: string | null = this.store.activeAccountId(),
+    date: string = this.date(),
+  ): Promise<void> {
+    if (!accountId) {
+      this.requestId += 1;
+      this.loadedKey = null;
+      this.dayHash = '';
       this.day.set(null);
+      this.loading.set(false);
       return;
     }
+    const key = `${accountId}:${date}`;
+    const viewChanged = key !== this.loadedKey;
     const requestId = ++this.requestId;
-    this.loading.set(true);
+    if (viewChanged) this.loading.set(true);
     try {
-      const day = await this.api.getDay(account.id, this.date());
+      const day = await this.api.getDay(accountId, date);
       if (requestId !== this.requestId) return;
-      this.day.set(day);
-      if (!this.expanded().size && day.assets.length) {
+      const hash = dayFingerprint(day);
+      if (viewChanged || hash !== this.dayHash) {
+        this.day.set(day);
+        this.dayHash = hash;
+      }
+      if (viewChanged && !this.expanded().size && day.assets.length) {
         this.expanded.set(new Set([day.assets[0].asset.id]));
       }
+      this.loadedKey = key;
     } catch (error) {
       if (requestId === this.requestId) this.notifications.error(error);
     } finally {
@@ -332,6 +348,7 @@ export class JournalPage {
       this.day.update((current) =>
         current ? { ...current, journal: { ...current.journal, generalHtml: journal.generalHtml } } : current,
       );
+      this.dayHash = dayFingerprint(this.day());
     } catch (error) {
       this.notifications.error(error);
     } finally {
@@ -433,6 +450,7 @@ export class JournalPage {
         assets: day.assets.map((asset) => (asset.asset.id === assetId ? update(asset) : asset)),
       };
     });
+    this.dayHash = dayFingerprint(this.day());
   }
 }
 
