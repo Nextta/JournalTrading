@@ -33,6 +33,8 @@ export class Store {
     );
   });
 
+  readonly activeAccountId = computed(() => this.activeAccount()?.id ?? null);
+
   readonly activeAccounts = computed(() =>
     this.accounts().filter((account) => account.status === 'active'),
   );

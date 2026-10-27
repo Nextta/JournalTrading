@@ -93,7 +93,7 @@ export class TradesPage {
 
   constructor() {
     effect(() => {
-      this.store.activeAccount()?.id;
+      this.store.activeAccountId();
       this.store.dataVersion();
       this.from();
       this.to();
@@ -106,8 +106,8 @@ export class TradesPage {
   }
 
   private async load(): Promise<void> {
-    const account = this.store.activeAccount();
-    if (!account) {
+    const accountId = this.store.activeAccountId();
+    if (!accountId) {
       this.page.set({ items: [], total: 0 });
       return;
     }
@@ -115,7 +115,7 @@ export class TradesPage {
     this.loading.set(true);
     try {
       const filter: TradeFilter = {
-        accountId: account.id,
+        accountId,
         from: this.from() || null,
         to: this.to() || null,
         state: this.state(),
