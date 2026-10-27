@@ -7,7 +7,7 @@ Diario de trading de escritorio para Windows con sincronización en tiempo real 
 - **Dashboard**: resumen de cuenta, balance, equity, rendimiento y actividad reciente.
 - **Diario de trading**: una entrada por cuenta y día, con notas generales, análisis por activo, imágenes y checklist de estrategia.
 - **Operaciones**: listado filtrable por fecha, símbolo, estrategia y estado, con detalle de deals, notas e imágenes.
-- **Gráficos**: velas M1, M5, M15, M30, H1, H4, D1 y W1 bajo demanda, con caché local.
+- **Gráficos**: velas M1, M5, M15, M30, H1, H4, D1 y W1 bajo demanda, con caché local, marcadores de entrada/salida con volumen, motivo de cierre (SL/TP/cierre) y línea de recorrido.
 - **Estadísticas**: beneficio neto, win rate, profit factor, expectancy, drawdown, distribución de R, resultados por símbolo, estrategia, día de la semana, hora y mes.
 - **Estrategias**: checklists agrupadas por secciones, puntos obligatorios y asignación por activo.
 - **Cuentas**: soporte multi-cuenta, activación, archivo y aprobación de cuentas nuevas detectadas por el EA.

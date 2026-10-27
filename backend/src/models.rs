@@ -192,6 +192,7 @@ pub struct Deal {
     pub time_server: String,
     pub time_utc: String,
     pub comment: String,
+    pub reason: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]

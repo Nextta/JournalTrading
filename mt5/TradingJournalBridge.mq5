@@ -3,7 +3,7 @@
 //|                    Puente entre MetaTrader 5 y Plan de Trading   |
 //+------------------------------------------------------------------+
 #property copyright "Plan de Trading"
-#property version   "1.00"
+#property version   "1.10"
 #property description "Envía heartbeat, operaciones, deals y velas a la app local."
 
 input string InpApiUrl           = "http://127.0.0.1:4477"; // URL base de la app
@@ -13,7 +13,7 @@ input int    InpSyncSeconds      = 15;                       // Sincronización 
 input int    InpHistoryDays      = 90;                       // Días de historial inicial
 input bool   InpVerbose          = true;                     // Logs detallados
 
-#define EA_VERSION "1.0.0"
+#define EA_VERSION "1.1.0"
 #define MAX_SERIES_BARS 20000
 
 string   g_apiBase = "";
@@ -358,6 +358,7 @@ string BuildDealJson(const ulong ticket)
    json += "\"swap\":" + Num(HistoryDealGetDouble(ticket, DEAL_SWAP)) + ",";
    json += "\"magic\":" + IntegerToString(HistoryDealGetInteger(ticket, DEAL_MAGIC)) + ",";
    json += "\"comment\":\"" + Esc(HistoryDealGetString(ticket, DEAL_COMMENT)) + "\",";
+   json += "\"reason\":" + IntegerToString(HistoryDealGetInteger(ticket, DEAL_REASON)) + ",";
    json += "\"time_server\":\"" + ServerTime(time) + "\",";
    json += "\"time\":" + IntegerToString((long)time);
    json += "}";

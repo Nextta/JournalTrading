@@ -145,6 +145,7 @@ export interface Deal {
   timeServer: string;
   timeUtc: string;
   comment: string;
+  reason: number;
 }
 
 export interface ImageInfo {

@@ -248,7 +248,7 @@ pub async fn load_plan_items(pool: &SqlitePool, asset_id: &str) -> AppResult<Vec
 pub async fn load_deals(pool: &SqlitePool, trade_id: &str) -> AppResult<Vec<Deal>> {
     Ok(sqlx::query_as::<_, Deal>(
         "SELECT id, trade_id, account_id, deal_ticket, entry, type, volume, price, profit,
-                commission, swap, time_server, time_utc, comment
+                commission, swap, time_server, time_utc, comment, reason
          FROM deals WHERE trade_id = ? ORDER BY time_utc, deal_ticket",
     )
     .bind(trade_id)
