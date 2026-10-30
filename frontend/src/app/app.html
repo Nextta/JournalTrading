@@ -1,9 +1,9 @@
 <div class="shell" [class.collapsed]="collapsed()">
   <aside class="sidebar">
-    <a class="brand" routerLink="/dashboard" aria-label="Plan de Trading">
-      <span class="brand-mark">PT</span>
+    <a class="brand" routerLink="/dashboard" aria-label="JournalTrading">
+      <span class="brand-mark">JT</span>
       <span class="brand-copy">
-        <strong>Plan de Trading</strong>
+        <strong>JournalTrading</strong>
         <small>Diario &amp; analítica</small>
       </span>
     </a>
@@ -100,7 +100,7 @@
       @if (store.loading()) {
         <div class="loading-state">
           <div class="spinner"></div>
-          <p>Cargando tu plan de trading…</p>
+          <p>Cargando JournalTrading…</p>
         </div>
       } @else if (store.error() && !store.settings()) {
         <section class="fatal-card">

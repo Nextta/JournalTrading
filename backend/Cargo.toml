@@ -1,7 +1,7 @@
 [package]
-name = "plan-de-trading"
+name = "journal-trading"
 version = "0.1.0"
-description = "Plan de Trading - diario y analitica de trading"
+description = "JournalTrading - diario y analitica de trading"
 authors = ["Jairo"]
 license = "MIT"
 repository = ""

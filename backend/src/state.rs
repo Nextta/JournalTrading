@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use sqlx::SqlitePool;
@@ -10,6 +10,8 @@ use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::models::Mt5Status;
 use crate::util::now_iso;
+
+const LEGACY_DATA_DIR_NAME: &str = "com.jairo.plandetrading";
 
 #[derive(Clone)]
 pub struct AppState {
@@ -31,6 +33,7 @@ impl AppState {
             .path()
             .app_data_dir()
             .map_err(|error| AppError::Internal(error.to_string()))?;
+        migrate_legacy_data_dir(&data_dir).await?;
         tokio::fs::create_dir_all(&data_dir).await?;
 
         tokio::fs::create_dir_all(data_dir.join("media").join("thumbs")).await?;
@@ -138,6 +141,105 @@ impl AppState {
     }
 }
 
+async fn migrate_legacy_data_dir(data_dir: &Path) -> AppResult<()> {
+    let db_path = data_dir.join("trading-journal.db");
+    if db_path.exists() {
+        return Ok(());
+    }
+    let Some(parent) = data_dir.parent() else {
+        return Ok(());
+    };
+    let legacy_dir = parent.join(LEGACY_DATA_DIR_NAME);
+    let legacy_db = legacy_dir.join("trading-journal.db");
+    if !legacy_db.is_file() {
+        return Ok(());
+    }
+
+    copy_dir_contents(&legacy_dir, data_dir, true).await?;
+
+    let temp_db = data_dir.join("trading-journal.db.migrating");
+    tokio::fs::copy(&legacy_db, &temp_db).await?;
+    tokio::fs::rename(&temp_db, &db_path).await?;
+
+    log::info!("Datos migrados desde {}", legacy_dir.display());
+    Ok(())
+}
+
+async fn copy_dir_contents(src: &Path, dst: &Path, skip_root_db: bool) -> AppResult<()> {
+    tokio::fs::create_dir_all(dst).await?;
+    let mut pending = vec![(src.to_path_buf(), dst.to_path_buf(), skip_root_db)];
+
+    while let Some((from, to, skip_db)) = pending.pop() {
+        let mut entries = tokio::fs::read_dir(&from).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            let file_type = entry.file_type().await?;
+            let name = entry.file_name();
+            let target = to.join(&name);
+
+            if file_type.is_dir() {
+                tokio::fs::create_dir_all(&target).await?;
+                pending.push((entry.path(), target, false));
+            } else if file_type.is_file() {
+                if skip_db && name == "trading-journal.db" {
+                    continue;
+                }
+                tokio::fs::copy(entry.path(), &target).await?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn emit_status(app: &AppHandle, status: &Mt5Status) {
     let _ = app.emit("mt5://status", status.clone());
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn migrates_legacy_data_and_does_not_overwrite_existing_data() {
+        let root =
+            std::env::temp_dir().join(format!("journal-trading-test-{}", uuid::Uuid::new_v4()));
+        let legacy = root.join(LEGACY_DATA_DIR_NAME);
+        let current = root.join("com.jairo.journaltrading");
+
+        fs::create_dir_all(legacy.join("media").join("thumbs")).unwrap();
+        fs::write(legacy.join("trading-journal.db"), b"legacy-db").unwrap();
+        fs::write(legacy.join("trading-journal.db-wal"), b"legacy-wal").unwrap();
+        fs::write(
+            legacy.join("media").join("thumbs").join("image.png"),
+            b"image",
+        )
+        .unwrap();
+
+        migrate_legacy_data_dir(&current).await.unwrap();
+
+        assert_eq!(
+            fs::read(current.join("trading-journal.db")).unwrap(),
+            b"legacy-db"
+        );
+        assert_eq!(
+            fs::read(current.join("trading-journal.db-wal")).unwrap(),
+            b"legacy-wal"
+        );
+        assert_eq!(
+            fs::read(current.join("media").join("thumbs").join("image.png")).unwrap(),
+            b"image"
+        );
+        assert!(!current.join("trading-journal.db.migrating").exists());
+
+        fs::write(current.join("trading-journal.db"), b"current-db").unwrap();
+        migrate_legacy_data_dir(&current).await.unwrap();
+        assert_eq!(
+            fs::read(current.join("trading-journal.db")).unwrap(),
+            b"current-db"
+        );
+
+        fs::remove_dir_all(root).unwrap();
+    }
 }

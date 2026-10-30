@@ -1,4 +1,4 @@
-# Plan de Trading
+# JournalTrading
 
 Diario de trading de escritorio para Windows con sincronización en tiempo real desde MetaTrader 5. La aplicación combina un frontend Angular, un backend Rust/Tauri con SQLite y un Expert Advisor (EA) para MT5.
 
@@ -22,7 +22,7 @@ MetaTrader 5
         │ HTTP JSON + X-Api-Key
         ▼
 Backend Tauri / Rust (axum, 127.0.0.1:4477)
-  ├─ SQLite (%APPDATA%\com.jairo.plandetrading)
+  ├─ SQLite (%APPDATA%\com.jairo.journaltrading)
   ├─ Eventos Tauri
   └─ Comandos Tauri
         │ IPC
@@ -89,8 +89,8 @@ npm run build
 
 Artefactos generados:
 
-- Ejecutable: `backend\target\release\plan-de-trading.exe`
-- Instalador: `backend\target\release\bundle\nsis\Plan de Trading_0.1.0_x64-setup.exe`
+- Ejecutable: `backend\target\release\journal-trading.exe`
+- Instalador: `backend\target\release\bundle\nsis\JournalTrading_0.1.0_x64-setup.exe`
 
 También puedes compilar únicamente el frontend:
 
@@ -132,7 +132,7 @@ Notas:
 El repositorio incluye un simulador en PowerShell para probar la integración sin MT5. La app debe estar en ejecución.
 
 ```powershell
-$env:PLAN_TRADING_API_KEY = "tu-api-key"
+$env:JOURNAL_TRADING_API_KEY = "tu-api-key"
 .\tools\simulate-mt5.ps1 -HeartbeatSeconds 2 -SyncSeconds 5
 ```
 
@@ -140,7 +140,7 @@ Parámetros disponibles:
 
 | Parámetro | Por defecto | Descripción |
 | --- | --- | --- |
-| `-ApiKey` | `$env:PLAN_TRADING_API_KEY` | API key de la app |
+| `-ApiKey` | `$env:JOURNAL_TRADING_API_KEY` | API key de la app |
 | `-Port` | `4477` | Puerto del backend |
 | `-Login` | `990001` | Login de la cuenta simulada |
 | `-Server` | `Simulator-Demo` | Servidor de la cuenta simulada |
@@ -155,11 +155,15 @@ El simulador crea la cuenta `990001 / Simulator-Demo`, con balance inicial de 10
 Ruta de datos en Windows:
 
 ```text
-%APPDATA%\com.jairo.plandetrading\
+%APPDATA%\com.jairo.journaltrading\
 ├─ trading-journal.db
 ├─ media\
 └─ backups\
 ```
+
+> Si vienes de la versión anterior (`Plan de Trading`), la primera vez que abras JournalTrading se copiarán automáticamente la base de datos, las imágenes y las copias desde `%APPDATA%\com.jairo.plandetrading` a la nueva carpeta. La carpeta antigua no se modifica.
+>
+> La nueva versión usa un identificador de aplicación distinto, así que Windows puede mostrarla como una aplicación separada. Desinstala la versión anterior cuando hayas comprobado que tus datos se han migrado.
 
 - `trading-journal.db`: base de datos SQLite.
 - `media\`: imágenes adjuntas al diario y a las operaciones.
@@ -191,7 +195,7 @@ Invoke-RestMethod http://127.0.0.1:4477/api/v1/health
 ## Estructura del proyecto
 
 ```text
-PlanDeTrading/
+JournalTrading/
 ├─ backend/
 │  ├─ migrations/            Esquema SQLite
 │  ├─ src/
@@ -272,7 +276,7 @@ PlanDeTrading/
 
 **Quiero empezar de cero**
 
-- Cierra la app y elimina `trading-journal.db`, `trading-journal.db-shm` y `trading-journal.db-wal` de `%APPDATA%\com.jairo.plandetrading`.
+- Cierra la app y elimina `trading-journal.db`, `trading-journal.db-shm` y `trading-journal.db-wal` de `%APPDATA%\com.jairo.journaltrading`.
 
 ## Estado
 

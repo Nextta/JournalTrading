@@ -1,8 +1,8 @@
 //+------------------------------------------------------------------+
 //|                                         TradingJournalBridge.mq5 |
-//|                    Puente entre MetaTrader 5 y Plan de Trading   |
+//|                    Puente entre MetaTrader 5 y JournalTrading    |
 //+------------------------------------------------------------------+
-#property copyright "Plan de Trading"
+#property copyright "JournalTrading"
 #property version   "1.10"
 #property description "Envía heartbeat, operaciones, deals y velas a la app local."
 
@@ -666,7 +666,7 @@ void Heartbeat()
 {
    if(InpApiKey == "")
    {
-      Comment("Plan de Trading: configura InpApiKey para conectar.");
+      Comment("JournalTrading: configura InpApiKey para conectar.");
       return;
    }
 
@@ -674,7 +674,7 @@ void Heartbeat()
    int status = 0;
    if(!HttpPost("/api/v1/mt5/heartbeat", BuildHeartbeat(), response, status))
    {
-      Comment("Plan de Trading: sin conexión con la app local.");
+      Comment("JournalTrading: sin conexión con la app local.");
       return;
    }
 
@@ -684,9 +684,9 @@ void Heartbeat()
       g_brokerOffset = (int)offset;
 
    if(JsonBool("pendingConfirmation", response))
-      Comment("Plan de Trading: cuenta pendiente de confirmar en la app.");
+      Comment("JournalTrading: cuenta pendiente de confirmar en la app.");
    else
-      Comment("Plan de Trading: conectado · ", AccountInfoString(ACCOUNT_SERVER));
+      Comment("JournalTrading: conectado · ", AccountInfoString(ACCOUNT_SERVER));
 
    ProcessCommands(response);
 }
@@ -702,12 +702,12 @@ int OnInit()
       g_apiBase = StringSubstr(g_apiBase, 0, StringLen(g_apiBase) - 1);
 
    if(InpApiKey == "")
-      Print("Plan de Trading: InpApiKey está vacía. Configura la API key en los ajustes de la app.");
+      Print("JournalTrading: InpApiKey está vacía. Configura la API key en los ajustes de la app.");
 
    EventSetTimer(1);
    g_forceHeartbeat = true;
    g_forceSync = true;
-   PrintFormat("Plan de Trading Bridge %s iniciado. Endpoint: %s", EA_VERSION, g_apiBase);
+   PrintFormat("JournalTrading Bridge %s iniciado. Endpoint: %s", EA_VERSION, g_apiBase);
    return INIT_SUCCEEDED;
 }
 

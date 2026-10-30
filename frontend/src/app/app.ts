@@ -77,7 +77,7 @@ export class App {
       .subscribe((event) => {
         let route = this.router.routerState.snapshot.root;
         while (route.firstChild) route = route.firstChild;
-        this.title.set((route.data['title'] as string | undefined) ?? 'Plan de Trading');
+        this.title.set((route.data['title'] as string | undefined) ?? 'JournalTrading');
       });
   }
 

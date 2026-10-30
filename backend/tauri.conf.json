@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Plan de Trading",
+  "productName": "JournalTrading",
   "version": "0.1.0",
-  "identifier": "com.jairo.plandetrading",
+  "identifier": "com.jairo.journaltrading",
   "build": {
     "frontendDist": "../frontend/dist/frontend/browser",
     "devUrl": "http://localhost:4200",
@@ -19,7 +19,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Plan de Trading",
+        "title": "JournalTrading",
         "width": 1440,
         "height": 900,
         "minWidth": 1100,
