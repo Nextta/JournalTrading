@@ -20,6 +20,7 @@ import { QuillEditorComponent } from 'ngx-quill';
       <quill-editor
         [ngModel]="draft()"
         (ngModelChange)="onChange($event)"
+        (onBlur)="saveNow()"
         [modules]="modules"
         [placeholder]="placeholder()"
         [readOnly]="readonly()"
@@ -81,7 +82,6 @@ export class JournalEditorComponent {
 
   protected readonly draft = signal('');
   protected readonly dirty = signal(false);
-  private timer: ReturnType<typeof setTimeout> | null = null;
 
   protected readonly modules = {
     toolbar: [
@@ -102,7 +102,6 @@ export class JournalEditorComponent {
       }
     });
     inject(DestroyRef).onDestroy(() => {
-      if (this.timer) clearTimeout(this.timer);
       if (this.dirty()) {
         this.save.emit(this.draft());
       }
@@ -112,15 +111,9 @@ export class JournalEditorComponent {
   protected onChange(html: string): void {
     this.draft.set(html ?? '');
     this.dirty.set(true);
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = setTimeout(() => this.saveNow(), 1400);
   }
 
   protected saveNow(): void {
-    if (this.timer) {
-      clearTimeout(this.timer);
-      this.timer = null;
-    }
     if (!this.dirty() || this.readonly()) return;
     this.dirty.set(false);
     this.save.emit(this.draft());
