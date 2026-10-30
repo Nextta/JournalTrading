@@ -393,6 +393,39 @@ export interface MonthlyRow {
   winRate: number;
 }
 
+export interface CalendarPeriod {
+  net: number;
+  pct: number;
+  trades: number;
+  wins: number;
+  losses: number;
+  rTotal: number;
+  rTrades: number;
+}
+
+export interface CalendarDay extends CalendarPeriod {
+  date: string;
+}
+
+export interface CalendarMonth extends CalendarPeriod {
+  month: string;
+}
+
+export interface CalendarYear extends CalendarPeriod {
+  year: number;
+  months: CalendarMonth[];
+}
+
+export interface PerformanceCalendar {
+  currency: string;
+  startBalance: number;
+  endBalance: number;
+  days: CalendarDay[];
+  months: CalendarMonth[];
+  years: CalendarYear[];
+  totals: CalendarPeriod;
+}
+
 export interface StatsResponse {
   summary: StatsSummary;
   equity: EquityPoint[];

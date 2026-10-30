@@ -517,6 +517,55 @@ pub struct MonthlyRow {
     pub win_rate: f64,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarPeriod {
+    pub net: f64,
+    pub pct: f64,
+    pub trades: i64,
+    pub wins: i64,
+    pub losses: i64,
+    pub r_total: f64,
+    pub r_trades: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarDay {
+    pub date: String,
+    #[serde(flatten)]
+    pub period: CalendarPeriod,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarMonth {
+    pub month: String,
+    #[serde(flatten)]
+    pub period: CalendarPeriod,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarYear {
+    pub year: i32,
+    pub months: Vec<CalendarMonth>,
+    #[serde(flatten)]
+    pub period: CalendarPeriod,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PerformanceCalendar {
+    pub currency: String,
+    pub start_balance: f64,
+    pub end_balance: f64,
+    pub days: Vec<CalendarDay>,
+    pub months: Vec<CalendarMonth>,
+    pub years: Vec<CalendarYear>,
+    pub totals: CalendarPeriod,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StatsResponse {

@@ -17,6 +17,7 @@ import {
   ImageInfo,
   ImageSaveInput,
   Mt5Status,
+  PerformanceCalendar,
   PlanItem,
   SettingsResponse,
   SettingsUpdate,
@@ -244,6 +245,10 @@ export class ApiService {
 
   getStats(filter: StatsFilter): Promise<StatsResponse> {
     return this.call('get_stats', { filter });
+  }
+
+  getPerformanceCalendar(accountId: string): Promise<PerformanceCalendar> {
+    return this.call('get_performance_calendar', { accountId });
   }
 
   getSettings(): Promise<SettingsResponse> {

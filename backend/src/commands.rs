@@ -1193,6 +1193,14 @@ pub async fn get_stats(
 }
 
 #[tauri::command]
+pub async fn get_performance_calendar(
+    account_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<crate::models::PerformanceCalendar> {
+    stats::compute_calendar(&state.db, &account_id).await
+}
+
+#[tauri::command]
 pub async fn get_settings(state: State<'_, AppState>) -> AppResult<SettingsResponse> {
     settings_response(&state).await
 }

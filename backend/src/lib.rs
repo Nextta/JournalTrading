@@ -82,6 +82,7 @@ pub fn run() {
             commands::request_trade_series,
             commands::request_sync,
             commands::get_stats,
+            commands::get_performance_calendar,
             commands::get_settings,
             commands::update_settings,
             commands::regenerate_api_key,
