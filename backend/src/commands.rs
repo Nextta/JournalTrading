@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use base64::Engine;
 use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
@@ -7,7 +7,8 @@ use tauri::{AppHandle, State};
 use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    Account, AccountInput, AccountUpdate, Bootstrap, DayAsset, DayJournal, DayView, ImageInfo,
+    Account, AccountInput, AccountUpdate, AddGroupResult, AssetGroup, AssetGroupInput,
+    AssetGroupItemInput, Bootstrap, DayAsset, DayJournal, DayView, ExistingAssetAction, ImageInfo,
     ImageSaveInput, PlanItem, SettingsResponse, SettingsUpdate, Strategy, StrategyInput, Trade,
     TradeFilter, TradePage, TradeSeries,
 };
@@ -347,6 +348,216 @@ pub async fn duplicate_strategy(id: String, state: State<'_, AppState>) -> AppRe
             .collect(),
     };
     create_strategy(input, state).await
+}
+
+// ---------------------------------------------------------------------------
+// Asset groups
+// ---------------------------------------------------------------------------
+
+async fn normalize_asset_group_items(
+    pool: &SqlitePool,
+    items: &[AssetGroupItemInput],
+) -> AppResult<Vec<(String, Option<String>, bool)>> {
+    let mut normalized = Vec::with_capacity(items.len());
+    let mut seen = HashSet::new();
+
+    for item in items {
+        let symbol = item.symbol.trim().to_uppercase();
+        if symbol.is_empty() {
+            continue;
+        }
+        if !seen.insert(symbol.clone()) {
+            return Err(AppError::Validation(format!(
+                "El activo {symbol} está repetido en el grupo"
+            )));
+        }
+        let strategy_id = if item.strategy_overridden {
+            item.strategy_id.clone()
+        } else {
+            None
+        };
+        if let Some(strategy_id) = strategy_id.as_deref() {
+            services::load_strategy(pool, strategy_id).await?;
+        }
+        normalized.push((symbol, strategy_id, item.strategy_overridden));
+    }
+
+    if normalized.is_empty() {
+        return Err(AppError::Validation(
+            "Añade al menos un activo al grupo".into(),
+        ));
+    }
+    Ok(normalized)
+}
+
+async fn validate_default_group_strategy(
+    pool: &SqlitePool,
+    strategy_id: Option<&str>,
+) -> AppResult<()> {
+    if let Some(strategy_id) = strategy_id {
+        services::load_strategy(pool, strategy_id).await?;
+    }
+    Ok(())
+}
+
+async fn insert_asset_group_items(
+    conn: &mut sqlx::SqliteConnection,
+    group_id: &str,
+    items: &[(String, Option<String>, bool)],
+) -> AppResult<()> {
+    let now = now_iso();
+    for (index, (symbol, strategy_id, strategy_overridden)) in items.iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO asset_group_items
+             (id, group_id, symbol, strategy_id, strategy_overridden, sort_order, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(new_id())
+        .bind(group_id)
+        .bind(symbol)
+        .bind(strategy_id.as_deref())
+        .bind(strategy_overridden)
+        .bind(index as i64)
+        .bind(&now)
+        .execute(&mut *conn)
+        .await?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_asset_groups(state: State<'_, AppState>) -> AppResult<Vec<AssetGroup>> {
+    services::load_asset_groups(&state.db).await
+}
+
+#[tauri::command]
+pub async fn get_asset_group(id: String, state: State<'_, AppState>) -> AppResult<AssetGroup> {
+    services::load_asset_group(&state.db, &id).await
+}
+
+#[tauri::command]
+pub async fn create_asset_group(
+    input: AssetGroupInput,
+    state: State<'_, AppState>,
+) -> AppResult<AssetGroup> {
+    let name = input.name.trim();
+    if name.is_empty() {
+        return Err(AppError::Validation(
+            "El nombre del grupo es obligatorio".into(),
+        ));
+    }
+    validate_default_group_strategy(&state.db, input.default_strategy_id.as_deref()).await?;
+    let items = normalize_asset_group_items(&state.db, &input.items).await?;
+    let color = if input.color.trim().is_empty() {
+        "#6d7cff".to_string()
+    } else {
+        input.color.trim().to_string()
+    };
+
+    let id = new_id();
+    let now = now_iso();
+    let sort_order: i64 =
+        sqlx::query("SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM asset_groups")
+            .fetch_one(&state.db)
+            .await?
+            .get("next");
+
+    let mut tx = state.db.begin().await?;
+    sqlx::query(
+        "INSERT INTO asset_groups
+         (id, name, description, color, default_strategy_id, sort_order, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&id)
+    .bind(name)
+    .bind(input.description.trim())
+    .bind(&color)
+    .bind(input.default_strategy_id.as_deref())
+    .bind(sort_order)
+    .bind(&now)
+    .bind(&now)
+    .execute(&mut *tx)
+    .await?;
+    insert_asset_group_items(&mut tx, &id, &items).await?;
+    tx.commit().await?;
+
+    services::load_asset_group(&state.db, &id).await
+}
+
+#[tauri::command]
+pub async fn update_asset_group(
+    id: String,
+    input: AssetGroupInput,
+    state: State<'_, AppState>,
+) -> AppResult<AssetGroup> {
+    let name = input.name.trim();
+    if name.is_empty() {
+        return Err(AppError::Validation(
+            "El nombre del grupo es obligatorio".into(),
+        ));
+    }
+    services::load_asset_group(&state.db, &id).await?;
+    validate_default_group_strategy(&state.db, input.default_strategy_id.as_deref()).await?;
+    let items = normalize_asset_group_items(&state.db, &input.items).await?;
+    let color = if input.color.trim().is_empty() {
+        "#6d7cff".to_string()
+    } else {
+        input.color.trim().to_string()
+    };
+
+    let mut tx = state.db.begin().await?;
+    sqlx::query(
+        "UPDATE asset_groups
+         SET name = ?, description = ?, color = ?, default_strategy_id = ?, updated_at = ?
+         WHERE id = ?",
+    )
+    .bind(name)
+    .bind(input.description.trim())
+    .bind(&color)
+    .bind(input.default_strategy_id.as_deref())
+    .bind(now_iso())
+    .bind(&id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DELETE FROM asset_group_items WHERE group_id = ?")
+        .bind(&id)
+        .execute(&mut *tx)
+        .await?;
+    insert_asset_group_items(&mut tx, &id, &items).await?;
+    tx.commit().await?;
+
+    services::load_asset_group(&state.db, &id).await
+}
+
+#[tauri::command]
+pub async fn delete_asset_group(id: String, state: State<'_, AppState>) -> AppResult<()> {
+    services::load_asset_group(&state.db, &id).await?;
+    sqlx::query("DELETE FROM asset_groups WHERE id = ?")
+        .bind(&id)
+        .execute(&state.db)
+        .await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn add_group_to_day(
+    account_id: String,
+    date: String,
+    group_id: String,
+    existing_action: ExistingAssetAction,
+    apply_to_trades: bool,
+    state: State<'_, AppState>,
+) -> AppResult<AddGroupResult> {
+    validate_date(&date)?;
+    services::add_asset_group_to_day(
+        &state.db,
+        &account_id,
+        &date,
+        &group_id,
+        existing_action,
+        apply_to_trades,
+    )
+    .await
 }
 
 // ---------------------------------------------------------------------------

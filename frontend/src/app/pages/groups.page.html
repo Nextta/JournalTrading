@@ -1,0 +1,105 @@
+<div class="page">
+  <header class="page-head">
+    <div>
+      <div class="eyebrow">Plantillas</div>
+      <h1>Grupos de activos</h1>
+      <p class="text-sm muted">
+        Guarda los activos que operas habitualmente y su estrategia. Después podrás añadir el grupo
+        completo al diario de cualquier cuenta con un solo clic.
+      </p>
+    </div>
+    <div class="head-actions">
+      <button mat-flat-button color="primary" (click)="create()">
+        <mat-icon>add</mat-icon>
+        Nuevo grupo
+      </button>
+    </div>
+  </header>
+
+  @if (loading()) {
+    <mat-progress-bar mode="indeterminate" class="page-progress" />
+  }
+
+  @if (groups().length) {
+    <div class="group-grid">
+      @for (group of groups(); track group.id) {
+        <article class="card group-card">
+          <div class="group-head">
+            <span class="group-dot" [style.background]="group.color"></span>
+            <div class="group-title">
+              <h3>{{ group.name }}</h3>
+              <p>{{ group.description || 'Sin descripción' }}</p>
+            </div>
+            <span class="pill">Global</span>
+          </div>
+
+          <div class="group-meta">
+            <span class="pill">
+              {{ group.items.length }} {{ group.items.length === 1 ? 'activo' : 'activos' }}
+            </span>
+            <span class="pill">{{ withStrategyCount(group) }} con estrategia</span>
+            @if (group.defaultStrategyId) {
+              <span class="pill default-pill">
+                <span class="pill-dot" [style.background]="defaultStrategyColor(group)"></span>
+                {{ defaultStrategyName(group) }}
+              </span>
+            }
+          </div>
+
+          <div class="group-preview">
+            @if (group.items.length) {
+              @for (item of previewItems(group); track item.id) {
+                <div class="preview-item">
+                  <span class="strategy-dot" [style.background]="strategyColor(group, item)"></span>
+                  <span class="symbol">{{ item.symbol }}</span>
+                  <span class="strategy-name">
+                    {{ strategyName(group, item) }}
+                    @if (inheritedStrategy(group, item)) {
+                      <span class="inherit-tag">grupo</span>
+                    }
+                  </span>
+                </div>
+              }
+              @if (group.items.length > 5) {
+                <span class="text-xs muted more">
+                  +{{ group.items.length - 5 }}
+                  {{ group.items.length - 5 === 1 ? 'activo más' : 'activos más' }}
+                </span>
+              }
+            } @else {
+              <p class="text-xs muted">Este grupo todavía no tiene activos.</p>
+            }
+          </div>
+
+          <div class="group-foot">
+            <span class="material-symbols-outlined">public</span>
+            Disponible en todas las cuentas
+          </div>
+
+          <div class="group-actions">
+            <button mat-stroked-button (click)="edit(group)">
+              <mat-icon>edit</mat-icon>
+              Editar
+            </button>
+            <button mat-icon-button matTooltip="Eliminar grupo" (click)="remove(group)">
+              <mat-icon>delete_outline</mat-icon>
+            </button>
+          </div>
+        </article>
+      }
+    </div>
+  } @else if (!loading()) {
+    <div class="card empty-state">
+      <span class="material-symbols-outlined">workspaces</span>
+      <h3>Sin grupos de activos</h3>
+      <p>
+        Crea un grupo con los activos que sueles operar y su estrategia. Podrás añadirlos todos
+        juntos al diario sin dejar de añadirlos uno a uno cuando lo necesites.
+      </p>
+      <button mat-flat-button color="primary" (click)="create()">
+        <mat-icon>add</mat-icon>
+        Nuevo grupo
+      </button>
+    </div>
+  }
+</div>

@@ -1,0 +1,125 @@
+<div class="dialog-title">
+  <span class="material-symbols-outlined">workspaces</span>
+  <span>Añadir grupo al día</span>
+</div>
+
+<mat-dialog-content class="dialog-body">
+  <p class="text-xs muted intro">
+    Elige una plantilla. Se añadirán todos sus activos al diario con la estrategia configurada en
+    cada uno.
+  </p>
+
+  <div class="group-list">
+    @for (group of data.groups; track group.id) {
+      <button
+        type="button"
+        class="group-option"
+        [class.selected]="selectedId() === group.id"
+        (click)="select(group.id)"
+      >
+        <span class="group-dot" [style.background]="group.color"></span>
+        <span class="group-copy">
+          <strong>{{ group.name }}</strong>
+          <small>
+            {{ group.items.length }}
+            {{ group.items.length === 1 ? 'activo' : 'activos' }}
+            @if (group.description) {
+              · {{ group.description }}
+            }
+          </small>
+        </span>
+        @if (conflictCount(group); as count) {
+          <span class="pill conflict-pill">{{ count }} ya en el día</span>
+        }
+        @if (selectedId() === group.id) {
+          <mat-icon class="selected-check">check_circle</mat-icon>
+        }
+      </button>
+    }
+  </div>
+
+  @if (selectedGroup(); as group) {
+    <div class="group-detail">
+      <div class="detail-head">
+        <span class="detail-title">Activos que se añadirán</span>
+        <span class="pill">{{ group.items.length }}</span>
+      </div>
+
+      @if (group.defaultStrategyId) {
+        <div class="group-default">
+          <span class="strategy-dot" [style.background]="defaultStrategyColor(group)"></span>
+          <span
+            >Estrategia común: <strong>{{ defaultStrategyName(group) }}</strong></span
+          >
+        </div>
+      }
+
+      <div class="asset-list">
+        @for (item of group.items; track item.id) {
+          <div class="asset-row" [class.conflict]="isExisting(item.symbol)">
+            <span class="strategy-dot" [style.background]="strategyColor(group, item)"></span>
+            <span class="asset-symbol">{{ item.symbol }}</span>
+            <span class="asset-strategy">
+              {{ strategyName(group, item) }}
+              @if (inheritsDefault(group, item)) {
+                <span class="inherit-badge">grupo</span>
+              }
+            </span>
+            @if (isExisting(item.symbol)) {
+              <span class="pill conflict-pill">Ya en el día</span>
+            }
+          </div>
+        }
+      </div>
+
+      @if (conflicts().length) {
+        <div class="conflict-box">
+          <div class="conflict-head">
+            <span class="material-symbols-outlined">warning</span>
+            <div>
+              <strong>Algunos activos ya están en el día</strong>
+              <p>
+                {{ conflictSymbols() }} ya {{ conflicts().length === 1 ? 'está' : 'están' }}
+                en el diario. ¿Qué quieres hacer con
+                {{ conflicts().length === 1 ? 'él' : 'ellos' }}?
+              </p>
+            </div>
+          </div>
+
+          <mat-radio-group [(ngModel)]="existingAction" class="conflict-options">
+            <mat-radio-button value="skip">
+              Omitirlos y conservar lo que ya tengo
+            </mat-radio-button>
+            <mat-radio-button value="update">
+              Actualizar su estrategia y checklist
+            </mat-radio-button>
+          </mat-radio-group>
+
+          @if (existingAction === 'update') {
+            <mat-checkbox [(ngModel)]="applyToTrades" class="apply-trades">
+              Aplicar también a las operaciones vinculadas
+            </mat-checkbox>
+            <p class="text-xs muted conflict-hint">
+              La checklist se regenera solo cuando cambia la estrategia del activo. Los activos que
+              no tengan estrategia (ni propia ni común) no modifican la estrategia que ya tengan en
+              el día.
+            </p>
+          }
+        </div>
+      }
+    </div>
+  }
+</mat-dialog-content>
+
+<div class="dialog-actions">
+  <button mat-button type="button" (click)="close()">Cancelar</button>
+  <button
+    mat-flat-button
+    color="primary"
+    type="button"
+    [disabled]="!selectedGroup()?.items?.length"
+    (click)="submit()"
+  >
+    Añadir grupo
+  </button>
+</div>

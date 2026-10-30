@@ -172,6 +172,14 @@
   margin-bottom: 12px;
 }
 
+.section-actions,
+.empty-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .asset-stack {
   display: flex;
   flex-direction: column;
