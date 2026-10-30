@@ -1,5 +1,5 @@
 {
-  "name": "plan-de-trading",
+  "name": "journal-trading",
   "version": "0.1.0",
   "private": true,
   "description": "Diario de trading de escritorio con Tauri, Angular, SQLite y MetaTrader 5",

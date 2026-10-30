@@ -67,7 +67,7 @@ async fn authorize(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError
 async fn health() -> Json<Value> {
     Json(json!({
         "ok": true,
-        "app": "Plan de Trading",
+        "app": "JournalTrading",
         "version": env!("CARGO_PKG_VERSION"),
         "time": now_iso(),
     }))

@@ -1,5 +1,5 @@
 param(
-    [string]$ApiKey = $env:PLAN_TRADING_API_KEY,
+    [string]$ApiKey = $env:JOURNAL_TRADING_API_KEY,
     [int]$Port = 4477,
     [long]$Login = 990001,
     [string]$Server = "Simulator-Demo",
@@ -9,7 +9,7 @@ param(
 )
 
 if ([string]::IsNullOrWhiteSpace($ApiKey)) {
-    throw "Falta la API key. Usa -ApiKey <valor> o define PLAN_TRADING_API_KEY. La encuentras en Ajustes > API key."
+    throw "Falta la API key. Usa -ApiKey <valor> o define JOURNAL_TRADING_API_KEY. La encuentras en Ajustes > API key."
 }
 
 $Base = "http://127.0.0.1:$Port"
@@ -58,7 +58,7 @@ function Build-HeartbeatPayload {
         login = $Login
         server = $Server
         display_name = "Cuenta Simulada"
-        company = "Plan de Trading Simulator"
+        company = "JournalTrading Simulator"
         currency = "USD"
         leverage = 100
         broker_utc_offset_seconds = $OffsetSeconds
@@ -293,7 +293,7 @@ function Process-Commands {
     }
 }
 
-Write-Host "Plan de Trading - simulador MT5"
+Write-Host "JournalTrading - simulador MT5"
 Write-Host ("Endpoint: " + $Base + " · cuenta " + $Login + " / " + $Server)
 Write-Host "Detén con Ctrl+C."
 
