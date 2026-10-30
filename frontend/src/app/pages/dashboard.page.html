@@ -7,8 +7,8 @@
       <span class="eyebrow">Primeros pasos</span>
       <h1>Empieza tu plan de trading</h1>
       <p>
-        Conecta tu cuenta de MetaTrader 5 con el puente local. El EA enviará tus operaciones,
-        el diario las organizará por día y activo, y podrás revisar tus estadísticas reales.
+        Conecta tu cuenta de MetaTrader 5 con el puente local. El EA enviará tus operaciones, el
+        diario las organizará por día y activo, y podrás revisar tus estadísticas reales.
       </p>
       <div class="steps">
         <div class="step">
@@ -68,9 +68,15 @@
       </div>
       <div class="page-actions">
         <div class="segmented" role="group" aria-label="Periodo de estadísticas">
-          <button type="button" [class.active]="period() === 'month'" (click)="setPeriod('month')">Mes</button>
-          <button type="button" [class.active]="period() === '30d'" (click)="setPeriod('30d')">30 días</button>
-          <button type="button" [class.active]="period() === 'year'" (click)="setPeriod('year')">Año</button>
+          <button type="button" [class.active]="period() === 'month'" (click)="setPeriod('month')">
+            Mes
+          </button>
+          <button type="button" [class.active]="period() === '30d'" (click)="setPeriod('30d')">
+            30 días
+          </button>
+          <button type="button" [class.active]="period() === 'year'" (click)="setPeriod('year')">
+            Año
+          </button>
         </div>
         <a mat-flat-button color="primary" routerLink="/diario">
           <span class="material-symbols-outlined">edit_note</span>
@@ -88,7 +94,11 @@
             <h2>{{ store.activeAccount()?.displayName }}</h2>
             <p>{{ store.activeAccount()?.login }} · {{ store.activeAccount()?.server }}</p>
           </div>
-          <span class="pill" [class.accent]="store.mt5Connected()" [class.pending]="!store.mt5Connected()">
+          <span
+            class="pill"
+            [class.accent]="store.mt5Connected()"
+            [class.pending]="!store.mt5Connected()"
+          >
             <span class="badge-dot"></span>
             {{ store.mt5Connected() ? 'Sincronizando' : 'Sin conexión' }}
           </span>
@@ -120,7 +130,9 @@
             </div>
             <div>
               <span class="text-xs muted">Resultado de hoy</span>
-              <strong [class.pos]="dayNet() > 0" [class.neg]="dayNet() < 0">{{ signed(dayNet()) }}</strong>
+              <strong [class.pos]="dayNet() > 0" [class.neg]="dayNet() < 0">{{
+                signed(dayNet())
+              }}</strong>
               <small class="muted text-xs">
                 {{ dayTrades().length }} cerradas · {{ dayWins() }} ganadas
               </small>
@@ -151,7 +163,11 @@
                 <span class="symbol">{{ asset.asset.symbol }}</span>
                 <span class="strategy">{{ asset.strategyName ?? 'Sin estrategia' }}</span>
                 <span class="mini-progress">
-                  {{ asset.planItems.length ? checkedCount(asset.planItems) + '/' + asset.planItems.length : '—' }}
+                  {{
+                    asset.planItems.length
+                      ? checkedCount(asset.planItems) + '/' + asset.planItems.length
+                      : '—'
+                  }}
                 </span>
               </a>
             } @empty {
@@ -179,7 +195,11 @@
               {{ periodLabel() }} · {{ stats()?.summary?.totalTrades ?? 0 }} operaciones cerradas
             </div>
           </div>
-          <span class="pill" [class.pos]="(stats()?.summary?.netProfit ?? 0) > 0" [class.neg]="(stats()?.summary?.netProfit ?? 0) < 0">
+          <span
+            class="pill"
+            [class.pos]="(stats()?.summary?.netProfit ?? 0) > 0"
+            [class.neg]="(stats()?.summary?.netProfit ?? 0) < 0"
+          >
             {{ signed(stats()?.summary?.netProfit ?? 0) }}
           </span>
         </div>
@@ -219,7 +239,10 @@
           </div>
           <div class="perf">
             <span>R medio</span>
-            <strong [class.pos]="(stats()?.summary?.avgR ?? 0) > 0" [class.neg]="(stats()?.summary?.avgR ?? 0) < 0">
+            <strong
+              [class.pos]="(stats()?.summary?.avgR ?? 0) > 0"
+              [class.neg]="(stats()?.summary?.avgR ?? 0) < 0"
+            >
               {{ avgRText() }}
             </strong>
             <small>Total {{ formatR(stats()?.summary?.totalR ?? 0) }}</small>
@@ -229,6 +252,230 @@
             <strong class="neg">{{ money(stats()?.summary?.maxDrawdown ?? 0) }}</strong>
             <small>{{ percent(stats()?.summary?.maxDrawdownPct) }} sobre el pico</small>
           </div>
+        </div>
+      </article>
+    </div>
+
+    <div class="calendar-grid">
+      <article class="card calendar-card">
+        <div class="card-header calendar-head">
+          <div>
+            <div class="card-title">
+              <span class="material-symbols-outlined">calendar_month</span>
+              Calendario de resultados
+            </div>
+            <div class="card-sub">
+              {{ calendarSubtitle() }}
+              @if (calendarLoading()) {
+                · actualizando…
+              }
+            </div>
+          </div>
+          <div class="calendar-controls">
+            <div class="segmented compact" role="group" aria-label="Formato del calendario">
+              <button
+                type="button"
+                [class.active]="calendarMode() === 'money'"
+                (click)="setCalendarMode('money')"
+              >
+                Moneda
+              </button>
+              <button
+                type="button"
+                [class.active]="calendarMode() === 'percent'"
+                (click)="setCalendarMode('percent')"
+              >
+                %
+              </button>
+              @if (calendarRVisible()) {
+                <button
+                  type="button"
+                  [class.active]="calendarMode() === 'r'"
+                  (click)="setCalendarMode('r')"
+                >
+                  R
+                </button>
+              }
+            </div>
+            <div class="month-nav">
+              <button mat-icon-button matTooltip="Mes anterior" (click)="moveCalendar(-1)">
+                <mat-icon>chevron_left</mat-icon>
+              </button>
+              <span class="month-name">{{ calendarMonthLabel() }}</span>
+              <button mat-icon-button matTooltip="Mes siguiente" (click)="moveCalendar(1)">
+                <mat-icon>chevron_right</mat-icon>
+              </button>
+              @if (calendarMonth() !== today.slice(0, 7)) {
+                <button mat-button (click)="resetCalendarMonth()">Hoy</button>
+              }
+            </div>
+          </div>
+        </div>
+        <div class="card-body calendar-body">
+          <div class="calendar-grid-head">
+            @for (label of weekdayColumns; track label) {
+              <span class="weekday">{{ label }}</span>
+            }
+            <span class="weekday week-total-head">Semana</span>
+          </div>
+          @for (week of calendarWeeks(); track week.start) {
+            <div class="calendar-week">
+              @for (cell of week.days; track cell.date) {
+                <a
+                  class="cal-day"
+                  [attr.data-date]="cell.date"
+                  [class.outside]="!cell.inMonth"
+                  [class.today]="cell.date === today"
+                  [class.empty]="!cell.day || cell.day.trades === 0"
+                  [style.background]="calendarDayBackground(cell.day)"
+                  [routerLink]="['/diario']"
+                  [queryParams]="{ date: cell.date }"
+                  [matTooltip]="calendarDayTooltip(cell.day, cell.date)"
+                  matTooltipClass="calendar-tooltip"
+                >
+                  <span class="cal-date">{{ dayNumber(cell.date) }}</span>
+                  @if (cell.day && cell.day.trades) {
+                    <span class="cal-value">{{ calendarDayText(cell.day) }}</span>
+                    <span class="cal-count">{{ cell.day.trades }}</span>
+                  }
+                </a>
+              }
+              <div
+                class="cal-week"
+                [class.empty]="!week.total"
+                [matTooltip]="weekTooltip(week)"
+                matTooltipClass="calendar-tooltip"
+              >
+                <span class="cal-week-label">Sem</span>
+                <span class="cal-week-value">{{ calendarWeekText(week) }}</span>
+              </div>
+            </div>
+          }
+          <div class="calendar-foot">
+            <div class="calendar-legend">
+              <span class="legend"><i class="pos"></i> Ganancia</span>
+              <span class="legend"><i class="neg"></i> Pérdida</span>
+              <span class="legend-note">Haz clic en un día para abrir el diario</span>
+            </div>
+            <div
+              class="month-total"
+              [class.pos]="(calendarMonthValue() ?? 0) > 0"
+              [class.neg]="(calendarMonthValue() ?? 0) < 0"
+            >
+              <span>Total del mes</span>
+              <strong>{{ calendarMonthTotalText() }}</strong>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="card heatmap-card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">
+              <span class="material-symbols-outlined">grid_view</span>
+              Mapa de calor mensual
+            </div>
+            <div class="card-sub">{{ heatmapSubtitle() }}</div>
+          </div>
+          <div class="segmented compact" role="group" aria-label="Formato del mapa de calor">
+            <button
+              type="button"
+              [class.active]="heatmapMode() === 'money'"
+              (click)="setHeatmapMode('money')"
+            >
+              Moneda
+            </button>
+            <button
+              type="button"
+              [class.active]="heatmapMode() === 'percent'"
+              (click)="setHeatmapMode('percent')"
+            >
+              %
+            </button>
+            @if (heatmapRVisible()) {
+              <button
+                type="button"
+                [class.active]="heatmapMode() === 'r'"
+                (click)="setHeatmapMode('r')"
+              >
+                R
+              </button>
+            }
+          </div>
+        </div>
+        <div class="card-body heatmap-body">
+          @if (heatmapRows().length) {
+            <div class="heatmap-scroll">
+              <div class="heatmap-table" role="table" aria-label="Resultados por año y mes">
+                <div class="heatmap-row heatmap-head" role="row">
+                  <span class="heatmap-year" role="columnheader">Año</span>
+                  @for (column of monthColumns; track column) {
+                    <span role="columnheader">{{ column }}</span>
+                  }
+                  <span class="heatmap-annual" role="columnheader">Total</span>
+                </div>
+                @for (row of heatmapRows(); track row.year) {
+                  <div class="heatmap-row" role="row" [attr.data-year]="row.year">
+                    <span class="heatmap-year" role="rowheader">{{ row.year }}</span>
+                    @for (cell of row.cells; track $index; let index = $index) {
+                      <div
+                        class="heatmap-cell"
+                        role="cell"
+                        [attr.data-month]="index + 1"
+                        [class.empty]="!cell || cell.trades === 0"
+                        [style.background]="heatmapCellBackground(cell)"
+                        [matTooltip]="heatmapCellTooltip(cell, row.year, index)"
+                        matTooltipClass="calendar-tooltip"
+                      >
+                        {{ heatmapCellText(cell) }}
+                      </div>
+                    }
+                    <div
+                      class="heatmap-cell heatmap-annual"
+                      role="cell"
+                      [style.background]="heatmapCellBackground(row.total)"
+                      [matTooltip]="heatmapYearTooltip(row.total)"
+                      matTooltipClass="calendar-tooltip"
+                    >
+                      {{ heatmapTotalText(row.total) }}
+                    </div>
+                  </div>
+                }
+                <div class="heatmap-row heatmap-total" role="row" data-year="total">
+                  <span class="heatmap-year" role="rowheader">Total</span>
+                  @for (cell of heatmapHistory(); track $index; let index = $index) {
+                    <div
+                      class="heatmap-cell"
+                      role="cell"
+                      [attr.data-month]="index + 1"
+                      [class.empty]="!cell"
+                      [style.background]="heatmapCellBackground(cell)"
+                      [matTooltip]="heatmapHistoryTooltip(cell, index)"
+                      matTooltipClass="calendar-tooltip"
+                    >
+                      {{ heatmapCellText(cell) }}
+                    </div>
+                  }
+                  <div
+                    class="heatmap-cell heatmap-annual"
+                    role="cell"
+                    [style.background]="heatmapCellBackground(heatmapTotals())"
+                    [matTooltip]="heatmapTotalTooltip()"
+                    matTooltipClass="calendar-tooltip"
+                  >
+                    {{ heatmapTotalText(heatmapTotals()) }}
+                  </div>
+                </div>
+              </div>
+            </div>
+          } @else {
+            <div class="empty">
+              <span class="material-symbols-outlined">grid_view</span>
+              <strong>Aún no hay historial mensual</strong>
+              <p>Cuando cierres operaciones verás aquí el resumen por meses y años.</p>
+            </div>
+          }
         </div>
       </article>
     </div>
@@ -243,7 +490,9 @@
             </div>
             <div class="card-sub">{{ openTrades().length }} posiciones en el mercado</div>
           </div>
-          <span class="pill" [class.pos]="openPnl() > 0" [class.neg]="openPnl() < 0">{{ signed(openPnl()) }}</span>
+          <span class="pill" [class.pos]="openPnl() > 0" [class.neg]="openPnl() < 0">{{
+            signed(openPnl())
+          }}</span>
         </div>
         @if (openTrades().length) {
           <div class="table-wrap">
@@ -265,13 +514,27 @@
                       <strong>{{ trade.symbol }}</strong>
                       <div class="text-xs muted">{{ formatDateTime(trade.openTimeServer) }}</div>
                     </td>
-                    <td><span class="pill" [class.buy]="trade.side === 'buy'" [class.sell]="trade.side === 'sell'">{{ sideLabel(trade.side) }}</span></td>
+                    <td>
+                      <span
+                        class="pill"
+                        [class.buy]="trade.side === 'buy'"
+                        [class.sell]="trade.side === 'sell'"
+                        >{{ sideLabel(trade.side) }}</span
+                      >
+                    </td>
                     <td class="num">{{ trade.volumeCurrent | number: '1.2-2' }}</td>
                     <td class="num">{{ formatPrice(trade.openPrice) }}</td>
                     <td class="num text-xs muted">
-                      {{ trade.sl ? formatPrice(trade.sl) : '—' }} / {{ trade.tp ? formatPrice(trade.tp) : '—' }}
+                      {{ trade.sl ? formatPrice(trade.sl) : '—' }} /
+                      {{ trade.tp ? formatPrice(trade.tp) : '—' }}
                     </td>
-                    <td class="num" [class.pos]="trade.profitNet > 0" [class.neg]="trade.profitNet < 0">{{ signed(trade.profitNet) }}</td>
+                    <td
+                      class="num"
+                      [class.pos]="trade.profitNet > 0"
+                      [class.neg]="trade.profitNet < 0"
+                    >
+                      {{ signed(trade.profitNet) }}
+                    </td>
                   </tr>
                 }
               </tbody>
@@ -313,9 +576,24 @@
                 @for (trade of recent(); track trade.id) {
                   <tr>
                     <td class="text-xs muted">{{ formatDateTime(trade.closeTimeServer) }}</td>
-                    <td><strong>{{ trade.symbol }}</strong></td>
-                    <td><span class="pill" [class.buy]="trade.side === 'buy'" [class.sell]="trade.side === 'sell'">{{ sideLabel(trade.side) }}</span></td>
-                    <td class="num" [class.pos]="trade.profitNet > 0" [class.neg]="trade.profitNet < 0">{{ signed(trade.profitNet) }}</td>
+                    <td>
+                      <strong>{{ trade.symbol }}</strong>
+                    </td>
+                    <td>
+                      <span
+                        class="pill"
+                        [class.buy]="trade.side === 'buy'"
+                        [class.sell]="trade.side === 'sell'"
+                        >{{ sideLabel(trade.side) }}</span
+                      >
+                    </td>
+                    <td
+                      class="num"
+                      [class.pos]="trade.profitNet > 0"
+                      [class.neg]="trade.profitNet < 0"
+                    >
+                      {{ signed(trade.profitNet) }}
+                    </td>
                     <td class="num">{{ formatR(trade.rMultiple) }}</td>
                   </tr>
                 }

@@ -21,7 +21,8 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../core/api.service';
@@ -93,6 +94,7 @@ export class JournalPage {
   private readonly api = inject(ApiService);
   private readonly dialog = inject(MatDialog);
   private readonly notifications = inject(NotificationsService);
+  private readonly route = inject(ActivatedRoute);
 
   protected readonly today = todayIso();
   protected readonly date = signal(this.today);
@@ -145,12 +147,24 @@ export class JournalPage {
   protected readonly sideLabel = sideLabel;
 
   constructor() {
+    const initialDate = this.route.snapshot.queryParamMap.get('date');
+    if (this.isValidDate(initialDate)) this.date.set(initialDate);
+
+    this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe((params) => {
+      const value = params.get('date');
+      if (this.isValidDate(value) && value !== this.date()) this.setDate(value);
+    });
+
     effect(() => {
       const accountId = this.store.activeAccountId();
       const date = this.date();
       this.store.dataVersion();
       void this.load(accountId, date);
     });
+  }
+
+  private isValidDate(value: string | null): value is string {
+    return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
   }
 
   private async load(

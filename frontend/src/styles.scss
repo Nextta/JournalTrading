@@ -608,6 +608,10 @@ a {
   font-size: 11px !important;
 }
 
+.calendar-tooltip .mdc-tooltip__surface {
+  white-space: pre-line;
+}
+
 /* Quill */
 .ql-toolbar.ql-snow {
   border-color: var(--border-strong);
