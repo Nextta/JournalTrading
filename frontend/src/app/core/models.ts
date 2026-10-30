@@ -99,6 +99,50 @@ export interface StrategyInput {
   items: StrategyItemInput[];
 }
 
+export interface AssetGroupItem {
+  id: string;
+  groupId: string;
+  symbol: string;
+  strategyId: string | null;
+  strategyOverridden: boolean;
+  sortOrder: number;
+  createdAt: string;
+}
+
+export interface AssetGroup {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  defaultStrategyId: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  items: AssetGroupItem[];
+}
+
+export interface AssetGroupItemInput {
+  symbol: string;
+  strategyId: string | null;
+  strategyOverridden: boolean;
+}
+
+export interface AssetGroupInput {
+  name: string;
+  description: string;
+  color: string;
+  defaultStrategyId: string | null;
+  items: AssetGroupItemInput[];
+}
+
+export type ExistingAssetAction = 'skip' | 'update';
+
+export interface AddGroupResult {
+  added: string[];
+  updated: string[];
+  skipped: string[];
+}
+
 export interface DayJournal {
   id: string;
   accountId: string;

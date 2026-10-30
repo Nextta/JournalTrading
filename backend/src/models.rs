@@ -138,6 +138,72 @@ fn default_color() -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
+pub struct AssetGroupItem {
+    pub id: String,
+    pub group_id: String,
+    pub symbol: String,
+    pub strategy_id: Option<String>,
+    pub strategy_overridden: bool,
+    pub sort_order: i64,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetGroup {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub color: String,
+    pub default_strategy_id: Option<String>,
+    pub sort_order: i64,
+    pub created_at: String,
+    pub updated_at: String,
+    #[sqlx(skip)]
+    #[serde(default)]
+    pub items: Vec<AssetGroupItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetGroupItemInput {
+    #[serde(default)]
+    pub symbol: String,
+    pub strategy_id: Option<String>,
+    #[serde(default)]
+    pub strategy_overridden: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetGroupInput {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default = "default_color")]
+    pub color: String,
+    pub default_strategy_id: Option<String>,
+    #[serde(default)]
+    pub items: Vec<AssetGroupItemInput>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExistingAssetAction {
+    Skip,
+    Update,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddGroupResult {
+    pub added: Vec<String>,
+    pub updated: Vec<String>,
+    pub skipped: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct DayJournal {
     pub id: String,
     pub account_id: String,

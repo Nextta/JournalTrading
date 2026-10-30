@@ -28,6 +28,11 @@ export const routes: Routes = [
     data: { title: 'Estrategias' },
   },
   {
+    path: 'grupos',
+    loadComponent: () => import('./pages/groups.page').then((m) => m.GroupsPage),
+    data: { title: 'Grupos de activos' },
+  },
+  {
     path: 'cuentas',
     loadComponent: () => import('./pages/accounts.page').then((m) => m.AccountsPage),
     data: { title: 'Cuentas' },

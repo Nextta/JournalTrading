@@ -1,0 +1,134 @@
+<div class="dialog-title">
+  <span class="material-symbols-outlined">workspaces</span>
+  <span>{{ data.group ? 'Editar grupo' : 'Nuevo grupo de activos' }}</span>
+</div>
+
+<mat-dialog-content class="dialog-body">
+  <div class="top-grid">
+    <mat-form-field appearance="outline" subscriptSizing="dynamic">
+      <mat-label>Nombre</mat-label>
+      <input matInput [(ngModel)]="name" placeholder="Ej. Pares mayores de Londres" autofocus />
+    </mat-form-field>
+
+    <div class="color-field">
+      <span class="field-label">Color</span>
+      <div class="color-row">
+        @for (option of colors; track option) {
+          <button
+            type="button"
+            class="color-swatch"
+            [class.selected]="color === option"
+            [style.background]="option"
+            [attr.aria-label]="option"
+            (click)="color = option"
+          >
+            @if (color === option) {
+              <mat-icon>check</mat-icon>
+            }
+          </button>
+        }
+      </div>
+    </div>
+  </div>
+
+  <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full">
+    <mat-label>Descripción</mat-label>
+    <textarea
+      matInput
+      [(ngModel)]="description"
+      rows="2"
+      placeholder="Qué tipo de sesión o mercado cubre este grupo…"
+    ></textarea>
+  </mat-form-field>
+
+  <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full">
+    <mat-label>Estrategia común del grupo (opcional)</mat-label>
+    <mat-select [(ngModel)]="defaultStrategyId">
+      <mat-option [value]="null">Sin estrategia común</mat-option>
+      @for (strategy of data.strategies; track strategy.id) {
+        <mat-option [value]="strategy.id">
+          {{ strategy.name }}{{ strategy.archived ? ' (archivada)' : '' }}
+        </mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+  <p class="text-xs muted strategy-hint">
+    Se aplicará a los activos que dejes en “Heredar del grupo”. Cada activo puede usar otra
+    estrategia o quedarse sin ninguna.
+  </p>
+
+  <div class="items-head">
+    <div>
+      <h3>Activos del grupo</h3>
+      <p class="text-xs muted">
+        Puedes heredar la estrategia común o asignar una propia a cada activo.
+      </p>
+    </div>
+    <button mat-stroked-button type="button" (click)="addItem()">
+      <mat-icon>add</mat-icon>
+      Añadir activo
+    </button>
+  </div>
+
+  <div class="items">
+    @if (!items().length) {
+      <div class="items-empty">
+        <p class="text-xs muted">Añade al menos un activo al grupo.</p>
+      </div>
+    }
+    @for (item of items(); track $index) {
+      <div class="item-row">
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="item-symbol">
+          <mat-label>Activo</mat-label>
+          <input
+            matInput
+            [ngModel]="item.symbol"
+            (ngModelChange)="setSymbol($index, $event)"
+            placeholder="EURUSD"
+          />
+        </mat-form-field>
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="item-strategy">
+          <mat-label>Estrategia</mat-label>
+          <mat-select [(ngModel)]="item.selection">
+            <mat-option [value]="inheritValue">
+              Heredar del grupo ({{ defaultStrategyName() }})
+            </mat-option>
+            <mat-option [value]="noneValue">Sin estrategia</mat-option>
+            @for (strategy of data.strategies; track strategy.id) {
+              <mat-option [value]="strategy.id">
+                {{ strategy.name }}{{ strategy.archived ? ' (archivada)' : '' }}
+              </mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+        <button
+          mat-icon-button
+          type="button"
+          class="item-remove"
+          matTooltip="Quitar activo"
+          (click)="removeItem($index)"
+        >
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+    }
+  </div>
+
+  <p class="text-xs muted note">
+    Los grupos son globales: puedes añadirlos al diario de cualquier cuenta. Editar un grupo no
+    modifica los activos que ya añadiste a tus días.
+  </p>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="close()">Cancelar</button>
+  <button
+    mat-flat-button
+    color="primary"
+    type="button"
+    [disabled]="saving() || !name.trim()"
+    (click)="save()"
+  >
+    {{ saving() ? 'Guardando…' : 'Guardar grupo' }}
+  </button>
+</mat-dialog-actions>

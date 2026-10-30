@@ -6,10 +6,14 @@ import {
   Account,
   AccountInput,
   AccountUpdate,
+  AddGroupResult,
+  AssetGroup,
+  AssetGroupInput,
   Bootstrap,
   DayAsset,
   DayJournal,
   DayView,
+  ExistingAssetAction,
   ImageInfo,
   ImageSaveInput,
   Mt5Status,
@@ -106,6 +110,42 @@ export class ApiService {
 
   duplicateStrategy(id: string): Promise<Strategy> {
     return this.call('duplicate_strategy', { id });
+  }
+
+  listAssetGroups(): Promise<AssetGroup[]> {
+    return this.call('list_asset_groups');
+  }
+
+  getAssetGroup(id: string): Promise<AssetGroup> {
+    return this.call('get_asset_group', { id });
+  }
+
+  createAssetGroup(input: AssetGroupInput): Promise<AssetGroup> {
+    return this.call('create_asset_group', { input });
+  }
+
+  updateAssetGroup(id: string, input: AssetGroupInput): Promise<AssetGroup> {
+    return this.call('update_asset_group', { id, input });
+  }
+
+  deleteAssetGroup(id: string): Promise<void> {
+    return this.call('delete_asset_group', { id });
+  }
+
+  addGroupToDay(
+    accountId: string,
+    date: string,
+    groupId: string,
+    existingAction: ExistingAssetAction,
+    applyToTrades: boolean,
+  ): Promise<AddGroupResult> {
+    return this.call('add_group_to_day', {
+      accountId,
+      date,
+      groupId,
+      existingAction,
+      applyToTrades,
+    });
   }
 
   getDay(accountId: string, date: string): Promise<DayView> {
@@ -234,10 +274,7 @@ export class ApiService {
     return this.call('create_backup');
   }
 
-  private listenEvent<T>(
-    event: string,
-    handler: (payload: T) => void,
-  ): Promise<UnlistenFn> {
+  private listenEvent<T>(event: string, handler: (payload: T) => void): Promise<UnlistenFn> {
     if (!isTauri()) {
       return Promise.resolve(() => undefined);
     }

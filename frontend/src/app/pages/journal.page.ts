@@ -38,7 +38,7 @@ import {
   todayIso,
 } from '../core/format';
 import { dayFingerprint } from '../core/journal-day';
-import type { DayAssetView, DayView, PlanItem, Strategy } from '../core/models';
+import type { AddGroupResult, DayAssetView, DayView, PlanItem, Strategy } from '../core/models';
 import { NotificationsService } from '../core/notifications.service';
 import { Store } from '../core/store';
 import {
@@ -47,6 +47,11 @@ import {
 } from '../shared/confirm-dialog.component';
 import { ImageGalleryComponent } from '../shared/image-gallery.component';
 import { JournalEditorComponent } from '../shared/journal-editor.component';
+import {
+  AddGroupDialogComponent,
+  type AddGroupDialogData,
+  type AddGroupDialogResult,
+} from './add-group.dialog';
 
 interface PlanSection {
   name: string;
@@ -284,6 +289,90 @@ export class JournalPage {
     }
   }
 
+  protected async addGroup(): Promise<void> {
+    const day = this.day();
+    const account = this.store.activeAccount();
+    if (!day || !account) return;
+
+    try {
+      const [groups, strategies] = await Promise.all([
+        this.api.listAssetGroups(),
+        this.api.listStrategies(true),
+      ]);
+      if (!groups.length) {
+        this.notifications.info(
+          'Todavía no tienes grupos. Créalos en la sección Grupos para poder añadirlos al diario.',
+        );
+        return;
+      }
+
+      const ref = this.dialog.open<
+        AddGroupDialogComponent,
+        AddGroupDialogData,
+        AddGroupDialogResult
+      >(AddGroupDialogComponent, {
+        data: {
+          groups,
+          strategies,
+          existingSymbols: day.assets.map((asset) => asset.asset.symbol),
+        },
+        width: '650px',
+        maxWidth: '94vw',
+      });
+      const result = await firstValueFrom(ref.afterClosed());
+      if (!result) return;
+
+      const outcome = await this.api.addGroupToDay(
+        account.id,
+        this.date(),
+        result.groupId,
+        result.existingAction,
+        result.applyToTrades,
+      );
+      await this.load();
+
+      const touched = new Set([...outcome.added, ...outcome.updated]);
+      if (touched.size) {
+        this.expanded.update((current) => {
+          const next = new Set(current);
+          for (const asset of this.day()?.assets ?? []) {
+            if (touched.has(asset.asset.symbol)) next.add(asset.asset.id);
+          }
+          return next;
+        });
+      }
+      this.notifications.success(this.groupAddMessage(outcome));
+    } catch (error) {
+      this.notifications.error(error);
+    }
+  }
+
+  private groupAddMessage(result: AddGroupResult): string {
+    if (!result.added.length && !result.updated.length) {
+      return 'Los activos del grupo ya estaban en el diario; no se modificó nada.';
+    }
+
+    const parts: string[] = [];
+    if (result.added.length) {
+      parts.push(
+        `${result.added.length} ${
+          result.added.length === 1 ? 'activo añadido' : 'activos añadidos'
+        }`,
+      );
+    }
+    if (result.updated.length) {
+      parts.push(
+        `${result.updated.length} ${
+          result.updated.length === 1 ? 'activo actualizado' : 'activos actualizados'
+        }`,
+      );
+    }
+    if (result.skipped.length) {
+      parts.push(`${result.skipped.length} sin cambios`);
+    }
+    return `Grupo añadido: ${parts.join(', ')}.`;
+  }
+
   protected async deleteAsset(asset: DayAssetView): Promise<void> {
     const ref = this.dialog.open<ConfirmDialogComponent, unknown, ConfirmDialogResult>(
       ConfirmDialogComponent,
@@ -346,7 +435,9 @@ export class JournalPage {
     try {
       const journal = await this.api.saveDayJournal(day.journal.id, html);
       this.day.update((current) =>
-        current ? { ...current, journal: { ...current.journal, generalHtml: journal.generalHtml } } : current,
+        current
+          ? { ...current, journal: { ...current.journal, generalHtml: journal.generalHtml } }
+          : current,
       );
       this.dayHash = dayFingerprint(this.day());
     } catch (error) {
@@ -385,9 +476,7 @@ export class JournalPage {
       const updated = await this.api.togglePlanItem(item.id, checked);
       this.patchAsset(asset.asset.id, (current) => ({
         ...current,
-        planItems: current.planItems.map((entry) =>
-          entry.id === item.id ? updated : entry,
-        ),
+        planItems: current.planItems.map((entry) => (entry.id === item.id ? updated : entry)),
       }));
     } catch (error) {
       this.notifications.error(error);

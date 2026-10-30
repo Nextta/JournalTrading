@@ -29,6 +29,10 @@
             <button mat-stroked-button (click)="goToday()">Hoy</button>
           }
         </div>
+        <button mat-stroked-button (click)="addGroup()">
+          <mat-icon>workspaces</mat-icon>
+          Añadir grupo
+        </button>
         <button mat-flat-button color="primary" (click)="addAsset()">
           <mat-icon>add</mat-icon>
           Añadir activo
@@ -44,7 +48,9 @@
       <div class="kpi-strip">
         <div class="kpi">
           <span>Resultado del día</span>
-          <strong [class.pos]="dayNet() > 0" [class.neg]="dayNet() < 0">{{ signed(dayNet()) }}</strong>
+          <strong [class.pos]="dayNet() > 0" [class.neg]="dayNet() < 0">{{
+            signed(dayNet())
+          }}</strong>
           <small>{{ dayTrades().length }} operaciones</small>
         </div>
         <div class="kpi">
@@ -150,10 +156,16 @@
             <span class="eyebrow">Plan operativo</span>
             <h2>Activos del día</h2>
           </div>
-          <button mat-stroked-button (click)="addAsset()">
-            <mat-icon>add</mat-icon>
-            Añadir activo
-          </button>
+          <div class="section-actions">
+            <button mat-stroked-button (click)="addGroup()">
+              <mat-icon>workspaces</mat-icon>
+              Añadir grupo
+            </button>
+            <button mat-stroked-button (click)="addAsset()">
+              <mat-icon>add</mat-icon>
+              Añadir activo
+            </button>
+          </div>
         </div>
 
         @if (!d.assets.length) {
@@ -161,20 +173,22 @@
             <span class="material-symbols-outlined">query_stats</span>
             <h3>Sin activos en el plan</h3>
             <p>Añade el primer activo para construir su checklist, notas y capturas del día.</p>
-            <button mat-flat-button color="primary" (click)="addAsset()">
-              <mat-icon>add</mat-icon>
-              Añadir activo
-            </button>
+            <div class="empty-actions">
+              <button mat-stroked-button (click)="addGroup()">
+                <mat-icon>workspaces</mat-icon>
+                Añadir grupo
+              </button>
+              <button mat-flat-button color="primary" (click)="addAsset()">
+                <mat-icon>add</mat-icon>
+                Añadir activo
+              </button>
+            </div>
           </div>
         } @else {
           <div class="asset-stack">
             @for (asset of d.assets; track asset.asset.id) {
               <article class="card asset-card" [class.open]="isExpanded(asset.asset.id)">
-                <button
-                  type="button"
-                  class="asset-head"
-                  (click)="toggleExpanded(asset.asset.id)"
-                >
+                <button type="button" class="asset-head" (click)="toggleExpanded(asset.asset.id)">
                   <div class="asset-identity">
                     <span class="strategy-dot" [style.background]="strategyColor(asset)"></span>
                     <div>
@@ -203,11 +217,10 @@
                     </div>
                     <div class="asset-check">
                       <span>Checklist</span>
-                      <strong>{{ checkedCount(asset.planItems) }}/{{ asset.planItems.length }}</strong>
-                      <mat-progress-bar
-                        mode="determinate"
-                        [value]="assetProgress(asset)"
-                      />
+                      <strong
+                        >{{ checkedCount(asset.planItems) }}/{{ asset.planItems.length }}</strong
+                      >
+                      <mat-progress-bar mode="determinate" [value]="assetProgress(asset)" />
                     </div>
                   </div>
 
@@ -357,7 +370,9 @@
                             @for (trade of asset.trades; track trade.id) {
                               <div class="trade-row">
                                 <span class="trade-time">
-                                  {{ formatDateTime(trade.closeTimeServer || trade.openTimeServer) }}
+                                  {{
+                                    formatDateTime(trade.closeTimeServer || trade.openTimeServer)
+                                  }}
                                 </span>
                                 <span
                                   class="side-badge"

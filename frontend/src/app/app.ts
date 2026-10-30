@@ -52,6 +52,7 @@ export class App {
     { label: 'Operaciones', icon: 'receipt_long', route: '/operaciones' },
     { label: 'Estadísticas', icon: 'insights', route: '/estadisticas' },
     { label: 'Estrategias', icon: 'rule', route: '/estrategias' },
+    { label: 'Grupos', icon: 'workspaces', route: '/grupos' },
     { label: 'Cuentas', icon: 'account_balance_wallet', route: '/cuentas' },
     { label: 'Ajustes', icon: 'tune', route: '/ajustes' },
   ];
