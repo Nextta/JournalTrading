@@ -1164,7 +1164,10 @@ pub async fn request_sync(account_id: String, state: State<'_, AppState>) -> App
     services::load_account(&state.db, &account_id).await?;
     let id = new_id();
     let now = now_iso();
-    let payload = serde_json::json!({ "from_days": 90 });
+    // 24800 días (~68 años) cubren todo el historial disponible sin desbordar
+    // el cálculo de segundos de versiones antiguas del EA (int de 32 bits).
+    // `all_history` fuerza la carga completa en el EA actualizado.
+    let payload = serde_json::json!({ "from_days": 24800, "all_history": true });
     sqlx::query(
         "INSERT INTO mt5_commands
          (id, account_id, kind, payload_json, status, created_at, updated_at)

@@ -100,7 +100,7 @@ export class App {
     this.syncing.set(true);
     try {
       await this.api.requestSync(account.id);
-      this.notifications.info('Sincronización solicitada al EA');
+      this.notifications.info('Sincronización completa solicitada al EA');
     } catch (error) {
       this.notifications.error(error);
     } finally {
