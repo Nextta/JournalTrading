@@ -3,18 +3,19 @@
 //|                    Puente entre MetaTrader 5 y JournalTrading    |
 //+------------------------------------------------------------------+
 #property copyright "JournalTrading"
-#property version   "1.10"
+#property version   "1.11"
 #property description "Envía heartbeat, operaciones, deals y velas a la app local."
 
 input string InpApiUrl           = "http://127.0.0.1:4477"; // URL base de la app
 input string InpApiKey           = "";                       // API key (Ajustes > Seguridad)
 input int    InpHeartbeatSeconds = 5;                        // Heartbeat (segundos)
 input int    InpSyncSeconds      = 15;                       // Sincronización (segundos)
-input int    InpHistoryDays      = 90;                       // Días de historial inicial
+input int    InpHistoryDays      = 0;                        // Días de historial inicial (0 = todo)
 input bool   InpVerbose          = true;                     // Logs detallados
 
-#define EA_VERSION "1.1.0"
+#define EA_VERSION "1.1.1"
 #define MAX_SERIES_BARS 20000
+#define SYNC_TIMEOUT_MS 60000
 
 string   g_apiBase = "";
 datetime g_lastHeartbeat = 0;
@@ -71,7 +72,7 @@ int BrokerOffsetSeconds()
 //+------------------------------------------------------------------+
 //| HTTP                                                             |
 //+------------------------------------------------------------------+
-bool HttpPost(const string path, const string body, string &response, int &status)
+bool HttpPost(const string path, const string body, string &response, int &status, const int timeoutMs = 5000)
 {
    char data[];
    char result[];
@@ -84,7 +85,7 @@ bool HttpPost(const string path, const string body, string &response, int &statu
    headers += "X-Api-Key: " + InpApiKey + "\r\n";
 
    ResetLastError();
-   status = WebRequest("POST", g_apiBase + path, headers, 5000, data, result, resultHeaders);
+   status = WebRequest("POST", g_apiBase + path, headers, timeoutMs, data, result, resultHeaders);
    if(status == -1)
    {
       int error = GetLastError();
@@ -396,7 +397,7 @@ string BuildPositionJson(const ulong ticket)
 //+------------------------------------------------------------------+
 //| Sincronización                                                   |
 //+------------------------------------------------------------------+
-bool SyncData(const bool forceFull, const int requestedDays)
+bool SyncData(const bool forceFull, const int requestedDays, const bool allHistory = false)
 {
    if(InpApiKey == "")
       return false;
@@ -408,9 +409,10 @@ bool SyncData(const bool forceFull, const int requestedDays)
    if(forceFull || !g_initialSyncDone)
    {
       int days = requestedDays > 0 ? requestedDays : InpHistoryDays;
-      if(days < 1)
-         days = 1;
-      from = now - (datetime)(days * 86400);
+      if(allHistory || days <= 0)
+         from = 0;
+      else
+         from = now - (datetime)(days * 86400);
    }
    else
    {
@@ -474,7 +476,7 @@ bool SyncData(const bool forceFull, const int requestedDays)
 
    string response = "";
    int status = 0;
-   if(!HttpPost("/api/v1/mt5/sync", body, response, status))
+   if(!HttpPost("/api/v1/mt5/sync", body, response, status, SYNC_TIMEOUT_MS))
       return false;
 
    g_lastSync = now;
@@ -615,7 +617,8 @@ void ProcessCommand(const string command)
    if(kind == "sync")
    {
       int days = (int)JsonLong("from_days", payload);
-      bool ok = SyncData(true, days);
+      bool allHistory = JsonBool("all_history", payload);
+      bool ok = SyncData(true, days, allHistory);
       SendCommandResult(id, ok, ok ? "" : "No se pudo sincronizar");
    }
    else if(kind == "series")

@@ -114,7 +114,7 @@ npm run build:web
 | `InpApiKey` | vacío | API key copiada desde Ajustes |
 | `InpHeartbeatSeconds` | `5` | Frecuencia del heartbeat |
 | `InpSyncSeconds` | `15` | Frecuencia de sincronización |
-| `InpHistoryDays` | `90` | Días de historial en la primera sincronización |
+| `InpHistoryDays` | `0` | Días de historial en la primera sincronización (`0` = todo el historial) |
 | `InpVerbose` | `true` | Logs detallados en MT5 |
 
 6. La primera vez, la cuenta aparecerá en estado **pendiente** en la sección **Cuentas**. Actívala para empezar a usarla.
@@ -122,7 +122,7 @@ npm run build:web
 Notas:
 
 - El EA envía todas las operaciones de la cuenta, independientemente del magic number.
-- La sincronización inicial descarga los últimos 90 días y después envía solo cambios.
+- La sincronización inicial descarga todo el historial disponible y después envía solo cambios. El botón **Sincronizar** también solicita una carga completa.
 - Los gráficos se solicitan al EA la primera vez que se abren y quedan cacheados en SQLite.
 - Si cambias el puerto en Ajustes, actualiza también `InpApiUrl` en el EA.
 - La app escucha solo en `127.0.0.1`; no expongas el puerto a la red.

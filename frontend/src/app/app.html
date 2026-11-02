@@ -64,6 +64,7 @@
           mat-stroked-button
           class="sync-btn"
           (click)="sync()"
+          matTooltip="Solicita al EA todo el historial disponible"
           [disabled]="!store.activeAccount() || syncing()"
         >
           <span class="material-symbols-outlined" [class.spin]="syncing()">sync</span>
