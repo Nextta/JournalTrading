@@ -17,10 +17,11 @@ use crate::services;
 use crate::state::AppState;
 use crate::util::{broker_date_from_string, broker_time_pair, new_id, now_iso};
 
-type ApiError = (StatusCode, Json<Value>);
+pub(crate) type ApiError = (StatusCode, Json<Value>);
 
 const PROVIDER_MT5: &str = "mt5";
 const PROVIDER_NT8: &str = "ninjatrader";
+pub(crate) const PROVIDER_ATAS: &str = "atas";
 
 fn api_error(status: StatusCode, message: impl Into<String>) -> ApiError {
     (
@@ -29,29 +30,36 @@ fn api_error(status: StatusCode, message: impl Into<String>) -> ApiError {
     )
 }
 
-fn internal(error: impl std::fmt::Display) -> ApiError {
+pub(crate) fn internal(error: impl std::fmt::Display) -> ApiError {
     log::error!("Error en el puente de datos: {error}");
     api_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
 }
 
-fn provider_key(provider: &str) -> &'static str {
-    if provider == PROVIDER_NT8 {
-        "nt8"
-    } else {
-        "mt5"
+pub(crate) fn provider_key(provider: &str) -> &'static str {
+    match provider {
+        PROVIDER_NT8 => "nt8",
+        PROVIDER_ATAS => "atas",
+        _ => "mt5",
     }
 }
 
 fn provider_label(provider: &str) -> &'static str {
-    if provider == PROVIDER_NT8 {
-        "NinjaTrader 8"
-    } else {
-        "MetaTrader 5"
+    match provider {
+        PROVIDER_NT8 => "NinjaTrader 8",
+        PROVIDER_ATAS => "ATAS X",
+        _ => "MetaTrader 5",
     }
 }
 
 fn normalize_server(provider: &str, server: &str) -> String {
     let server = server.trim();
+    if provider == PROVIDER_ATAS {
+        return if server.is_empty() {
+            "ATAS X".to_string()
+        } else {
+            server.to_string()
+        };
+    }
     if provider != PROVIDER_NT8 {
         return server.to_string();
     }
@@ -77,11 +85,15 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/nt8/series", post(nt8_series))
         .route("/api/v1/nt8/events", post(nt8_events))
         .route("/api/v1/nt8/commands/result", post(command_result))
+        .route("/api/v1/atas/heartbeat", post(crate::atas::heartbeat))
+        .route("/api/v1/atas/series", post(atas_series))
+        .route("/api/v1/atas/events", post(atas_events))
+        .route("/api/v1/atas/commands/result", post(command_result))
         .layer(DefaultBodyLimit::max(64 * 1024 * 1024))
         .with_state(state)
 }
 
-async fn authorize(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
+pub(crate) async fn authorize(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
     let expected = state.current_api_key().await;
     let from_header = headers
         .get("x-api-key")
@@ -107,7 +119,7 @@ async fn health() -> Json<Value> {
         "ok": true,
         "app": "JournalTrading",
         "version": env!("CARGO_PKG_VERSION"),
-        "providers": [PROVIDER_MT5, PROVIDER_NT8],
+        "providers": [PROVIDER_MT5, PROVIDER_NT8, PROVIDER_ATAS],
         "time": now_iso(),
     }))
 }
@@ -148,114 +160,114 @@ struct HeartbeatPayload {
     server_time: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-struct SyncPayload {
-    login: i64,
-    server: String,
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct SyncPayload {
+    pub(crate) login: i64,
+    pub(crate) server: String,
     #[serde(default)]
-    broker_utc_offset_seconds: Option<i64>,
+    pub(crate) broker_utc_offset_seconds: Option<i64>,
     #[serde(default)]
-    symbols: Vec<SymbolPayload>,
+    pub(crate) symbols: Vec<SymbolPayload>,
     #[serde(default)]
-    positions: Vec<PositionPayload>,
+    pub(crate) positions: Vec<PositionPayload>,
     #[serde(default)]
-    deals: Vec<DealPayload>,
+    pub(crate) deals: Vec<DealPayload>,
     /// Solo NT8: el payload contiene todas las ejecuciones desde esta fecha UTC.
     /// Los deals guardados a partir de ella que no vengan en el payload se eliminan,
     /// igual que las operaciones que se queden sin deals.
     #[serde(default)]
-    history_from_utc: Option<String>,
+    pub(crate) history_from_utc: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-struct SymbolPayload {
-    symbol: String,
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct SymbolPayload {
+    pub(crate) symbol: String,
     #[serde(default)]
-    description: String,
+    pub(crate) description: String,
     #[serde(default = "default_digits")]
-    digits: i64,
+    pub(crate) digits: i64,
     #[serde(default)]
-    tick_size: f64,
+    pub(crate) tick_size: f64,
     #[serde(default)]
-    tick_value: f64,
+    pub(crate) tick_value: f64,
     #[serde(default)]
-    contract_size: f64,
+    pub(crate) contract_size: f64,
     #[serde(default)]
-    currency_profit: String,
+    pub(crate) currency_profit: String,
 }
 
 fn default_digits() -> i64 {
     5
 }
 
-#[derive(Debug, Deserialize)]
-struct PositionPayload {
-    ticket: i64,
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct PositionPayload {
+    pub(crate) ticket: i64,
     #[serde(default)]
-    symbol: String,
+    pub(crate) symbol: String,
     #[serde(rename = "type")]
-    kind: i32,
+    pub(crate) kind: i32,
     #[serde(default)]
-    volume: f64,
+    pub(crate) volume: f64,
     #[serde(default)]
-    price_open: f64,
+    pub(crate) price_open: f64,
     #[serde(default)]
-    sl: Option<f64>,
+    pub(crate) sl: Option<f64>,
     #[serde(default)]
-    tp: Option<f64>,
+    pub(crate) tp: Option<f64>,
     #[serde(default)]
-    profit: f64,
+    pub(crate) profit: f64,
     #[serde(default)]
-    swap: f64,
+    pub(crate) swap: f64,
     #[serde(default)]
-    commission: f64,
+    pub(crate) commission: f64,
     #[serde(default)]
-    magic: Option<i64>,
+    pub(crate) magic: Option<i64>,
     #[serde(default)]
-    comment: Option<String>,
+    pub(crate) comment: Option<String>,
     #[serde(default)]
-    time_server: String,
+    pub(crate) time_server: String,
     #[serde(default)]
-    time: Option<i64>,
+    pub(crate) time: Option<i64>,
     #[serde(default)]
-    time_utc: Option<String>,
+    pub(crate) time_utc: Option<String>,
     #[serde(default)]
-    tick_size: Option<f64>,
+    pub(crate) tick_size: Option<f64>,
     #[serde(default)]
-    tick_value: Option<f64>,
+    pub(crate) tick_value: Option<f64>,
 }
 
-#[derive(Debug, Deserialize)]
-struct DealPayload {
-    deal_ticket: i64,
-    position_ticket: i64,
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct DealPayload {
+    pub(crate) deal_ticket: i64,
+    pub(crate) position_ticket: i64,
     #[serde(default)]
-    symbol: String,
+    pub(crate) symbol: String,
     #[serde(rename = "type")]
-    kind: i32,
-    entry: i64,
+    pub(crate) kind: i32,
+    pub(crate) entry: i64,
     #[serde(default)]
-    volume: f64,
+    pub(crate) volume: f64,
     #[serde(default)]
-    price: f64,
+    pub(crate) price: f64,
     #[serde(default)]
-    profit: f64,
+    pub(crate) profit: f64,
     #[serde(default)]
-    commission: f64,
+    pub(crate) commission: f64,
     #[serde(default)]
-    swap: f64,
+    pub(crate) swap: f64,
     #[serde(default)]
-    magic: Option<i64>,
+    pub(crate) magic: Option<i64>,
     #[serde(default)]
-    comment: Option<String>,
+    pub(crate) comment: Option<String>,
     #[serde(default = "default_deal_reason")]
-    reason: i64,
+    pub(crate) reason: i64,
     #[serde(default)]
-    time_server: String,
+    pub(crate) time_server: String,
     #[serde(default)]
-    time: Option<i64>,
+    pub(crate) time: Option<i64>,
     #[serde(default)]
-    time_utc: Option<String>,
+    pub(crate) time_utc: Option<String>,
 }
 
 fn default_deal_reason() -> i64 {
@@ -383,7 +395,7 @@ fn date_of(value: &str) -> Option<String> {
 // ---------------------------------------------------------------------------
 
 #[allow(clippy::too_many_arguments)]
-async fn ensure_account(
+pub(crate) async fn ensure_account(
     pool: &SqlitePool,
     provider: &str,
     login: i64,
@@ -487,7 +499,7 @@ async fn ensure_account(
     Ok((services::load_account(pool, &id).await?, true))
 }
 
-async fn mark_connected(
+pub(crate) async fn mark_connected(
     state: &AppState,
     provider: &str,
     account: &Account,
@@ -495,10 +507,10 @@ async fn mark_connected(
     terminal_build: Option<i64>,
     terminal_data_path: Option<&str>,
 ) {
-    let mut status = if provider == PROVIDER_NT8 {
-        state.bridge.nt8.write().await
-    } else {
-        state.bridge.mt5.write().await
+    let mut status = match provider {
+        PROVIDER_NT8 => state.bridge.nt8.write().await,
+        PROVIDER_ATAS => state.bridge.atas.write().await,
+        _ => state.bridge.mt5.write().await,
     };
     status.running = true;
     status.connected = true;
@@ -537,7 +549,7 @@ async fn touch_sync(pool: &SqlitePool, account_id: &str, offset_seconds: i64) ->
     Ok(())
 }
 
-async fn take_commands(pool: &SqlitePool, account_id: &str) -> AppResult<Vec<Value>> {
+pub(crate) async fn take_commands(pool: &SqlitePool, account_id: &str) -> AppResult<Vec<Value>> {
     let cutoff = (Utc::now() - Duration::minutes(15)).to_rfc3339_opts(SecondsFormat::Secs, true);
     sqlx::query(
         "UPDATE mt5_commands SET status = 'failed', error = 'El EA no procesó el comando a tiempo',
@@ -783,6 +795,14 @@ async fn nt8_series(
     series_for(state, headers, payload, PROVIDER_NT8).await
 }
 
+async fn atas_series(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<SeriesPayload>,
+) -> Result<Json<Value>, ApiError> {
+    series_for(state, headers, payload, PROVIDER_ATAS).await
+}
+
 async fn series_for(
     state: AppState,
     headers: HeaderMap,
@@ -885,6 +905,14 @@ async fn nt8_events(
     events_for(state, headers, payload, PROVIDER_NT8).await
 }
 
+async fn atas_events(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<EventPayload>,
+) -> Result<Json<Value>, ApiError> {
+    events_for(state, headers, payload, PROVIDER_ATAS).await
+}
+
 async fn events_for(
     state: AppState,
     headers: HeaderMap,
@@ -956,13 +984,13 @@ async fn command_result(
 // ---------------------------------------------------------------------------
 
 #[derive(Default)]
-struct IngestStats {
-    positions: i64,
-    deals: i64,
-    new_trades: i64,
+pub(crate) struct IngestStats {
+    pub(crate) positions: i64,
+    pub(crate) deals: i64,
+    pub(crate) new_trades: i64,
 }
 
-async fn ingest_sync(
+pub(crate) async fn ingest_sync(
     pool: &SqlitePool,
     account_id: &str,
     offset_seconds: i64,
@@ -1054,7 +1082,7 @@ async fn ingest_sync(
 /// Elimina deals guardados desde `from_utc` que ya no existen en el puente (por
 /// ejemplo, ejecuciones agrupadas con un ticket antiguo) y recalcula o borra las
 /// operaciones afectadas.
-async fn reconcile_history(
+pub(crate) async fn reconcile_history(
     pool: &SqlitePool,
     account_id: &str,
     from_utc: &str,

@@ -17,6 +17,7 @@ import {
   formatDateTime,
   formatMoney,
   initials,
+  providerShort,
   timeAgo,
 } from '../core/format';
 import type { Account } from '../core/models';
@@ -47,6 +48,7 @@ export class AccountsPage {
 
   protected readonly formatDateTime = formatDateTime;
   protected readonly timeAgo = timeAgo;
+  protected readonly providerShort = providerShort;
 
   protected money(value: number | null | undefined, currency: string): string {
     return formatMoney(value, currency);

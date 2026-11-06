@@ -15,7 +15,7 @@ import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } fro
 import { filter } from 'rxjs';
 
 import { ApiService } from './core/api.service';
-import { formatMoney, initials, todayIso, formatDateLong } from './core/format';
+import { accountRef, formatMoney, initials, todayIso, formatDateLong } from './core/format';
 import { NotificationsService } from './core/notifications.service';
 import { Store } from './core/store';
 
@@ -57,6 +57,7 @@ export class App {
     { label: 'Ajustes', icon: 'tune', route: '/ajustes' },
   ];
 
+  protected readonly accountRef = accountRef;
   protected readonly collapsed = signal(false);
   protected readonly title = signal('Dashboard');
   protected readonly today = formatDateLong(todayIso());

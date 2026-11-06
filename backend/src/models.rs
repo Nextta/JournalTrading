@@ -50,6 +50,9 @@ pub struct SettingsResponse {
     pub mt5: BridgeStatus,
     pub nt8: BridgeStatus,
     pub nt8_config_path: Option<String>,
+    pub atas: BridgeStatus,
+    pub atas_db_path: Option<String>,
+    pub atas_indicators_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

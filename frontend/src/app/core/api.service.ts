@@ -288,6 +288,18 @@ export class ApiService {
     return this.call('open_nt8_folder');
   }
 
+  getAtasStatus(): Promise<Mt5Status> {
+    return this.call('get_atas_status');
+  }
+
+  writeAtasConfig(): Promise<string> {
+    return this.call('write_atas_config');
+  }
+
+  openAtasIndicatorsFolder(): Promise<void> {
+    return this.call('open_atas_indicators_folder');
+  }
+
   openDataDir(): Promise<void> {
     return this.call('open_data_dir');
   }
@@ -317,6 +329,18 @@ export class ApiService {
 
   onNt8Heartbeat(handler: (payload: Record<string, unknown>) => void): Promise<UnlistenFn> {
     return this.listenEvent('nt8://heartbeat', handler);
+  }
+
+  onAtasStatus(handler: (status: Mt5Status) => void): Promise<UnlistenFn> {
+    return this.listenEvent('atas://status', handler);
+  }
+
+  onAtasHeartbeat(handler: (payload: Record<string, unknown>) => void): Promise<UnlistenFn> {
+    return this.listenEvent('atas://heartbeat', handler);
+  }
+
+  onAtasEvent(handler: (payload: Mt5Event) => void): Promise<UnlistenFn> {
+    return this.listenEvent('atas://event', handler);
   }
 
   onAccountsUpdated(handler: (payload: { accountId: string }) => void): Promise<UnlistenFn> {

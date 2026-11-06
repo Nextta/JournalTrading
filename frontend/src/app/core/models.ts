@@ -1,4 +1,4 @@
-export type Provider = 'mt5' | 'ninjatrader';
+export type Provider = 'mt5' | 'ninjatrader' | 'atas';
 
 export interface Account {
   id: string;
@@ -57,6 +57,9 @@ export interface SettingsResponse {
   mt5: BridgeStatus;
   nt8: BridgeStatus;
   nt8ConfigPath: string | null;
+  atas: BridgeStatus;
+  atasDbPath: string | null;
+  atasIndicatorsPath: string | null;
 }
 
 export interface SettingsUpdate {

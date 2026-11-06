@@ -194,3 +194,15 @@ export function percentChange(current: number, previous: number): number {
   if (!previous) return 0;
   return ((current - previous) / Math.abs(previous)) * 100;
 }
+
+export function providerShort(provider: string | null | undefined): string {
+  if (provider === 'ninjatrader') return 'NT8';
+  if (provider === 'atas') return 'ATAS';
+  return 'MT5';
+}
+
+/** Etiqueta corta de la cuenta: proveedor y login (ATAS no tiene login numérico propio). */
+export function accountRef(account: { provider: string; login: number }): string {
+  if (account.provider === 'atas') return 'ATAS';
+  return `${providerShort(account.provider)} · ${account.login}`;
+}

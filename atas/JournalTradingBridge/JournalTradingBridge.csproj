@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>JournalTradingBridge</AssemblyName>
+    <RootNamespace>JournalTrading.Atas</RootNamespace>
+    <!-- Carpeta de instalación de ATAS X. Se puede cambiar con -p:AtasDir="..." -->
+    <AtasDir Condition="'$(AtasDir)' == ''">C:\Program Files\ATAS X</AtasDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="ATAS.DataFeedsCore">
+      <HintPath>$(AtasDir)\ATAS.DataFeedsCore.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="ATAS.Indicators">
+      <HintPath>$(AtasDir)\ATAS.Indicators.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="ATAS.Types">
+      <HintPath>$(AtasDir)\ATAS.Types.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="OFT.Attributes">
+      <HintPath>$(AtasDir)\OFT.Attributes.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Utils.Common">
+      <HintPath>$(AtasDir)\Utils.Common.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

@@ -11,3 +11,5 @@ Thumbs.db
 *.db-wal
 media/
 .env
+atas/**/bin/
+atas/**/obj/
