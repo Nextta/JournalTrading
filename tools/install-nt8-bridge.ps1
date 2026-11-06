@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
     Instala el AddOn de JournalTrading en NinjaTrader 8 y, opcionalmente, lo compila.
@@ -65,9 +65,24 @@ New-Item -ItemType Directory -Path $addOnsDir -Force | Out-Null
 Copy-Item -LiteralPath $sourceFile -Destination $targetFile -Force
 Write-Host "AddOn copiado a $targetFile"
 
-# Añadir el archivo al proyecto sin duplicarlo.
-$projectText = Get-Content -LiteralPath $projectFile -Raw
+# Añadir el archivo al proyecto sin duplicarlo. NinjaTrader también lo añade por su
+# cuenta al compilar con F5, así que se eliminan las entradas repetidas.
+$projectText = Get-Content -LiteralPath $projectFile -Raw -Encoding UTF8
 $compileEntry = 'AddOns\JournalTradingBridge.cs'
+$entryPattern = '<Compile Include="' + [regex]::Escape($compileEntry) + '" />'
+$ownGroupPattern = '\s*<ItemGroup>\s*' + $entryPattern + '\s*</ItemGroup>'
+$entryCount = [regex]::Matches($projectText, $entryPattern).Count
+if ($entryCount -gt 1) {
+    $cleaned = [regex]::Replace($projectText, $ownGroupPattern, '')
+    $remaining = [regex]::Matches($cleaned, $entryPattern).Count
+    if ($remaining -ge 1 -and $remaining -lt $entryCount) {
+        $tempProject = "$projectFile.journaltrading.new"
+        [System.IO.File]::WriteAllText($tempProject, $cleaned, (New-Object System.Text.UTF8Encoding($true)))
+        Move-Item -LiteralPath $tempProject -Destination $projectFile -Force
+        $projectText = $cleaned
+        Write-Host 'Eliminada la entrada duplicada de JournalTradingBridge.cs en NinjaTrader.Custom.csproj'
+    }
+}
 if ($projectText -notmatch [regex]::Escape($compileEntry)) {
     $backup = "$projectFile.journaltrading.bak"
     if (-not (Test-Path $backup)) {
@@ -124,9 +139,19 @@ if (-not $msbuild) {
 
 $msbuildPath = if ($msbuild -is [System.Management.Automation.ApplicationInfo]) { $msbuild.Source } else { $msbuild.FullName }
 Write-Host "Compilando con $msbuildPath"
-& $msbuildPath $projectFile /t:Build /p:Configuration=Release /p:Platform=x64 /v:minimal
+# El proyecto Custom es de estilo SDK (PackageReference): /restore regenera obj\project.assets.json,
+# que NinjaTrader puede dejar desfasado al compilar desde su editor.
+$buildArgs = @($projectFile, '/restore', '/t:Build', '/p:Configuration=Release', '/p:Platform=x64',
+    '/nodeReuse:false', '/v:minimal', '/nologo', '/clp:ErrorsOnly')
+# Solo errores: los scripts de serie de NinjaTrader generan cientos de avisos (CS0436).
+& $msbuildPath @buildArgs
 if ($LASTEXITCODE -ne 0) {
-    throw "La compilación falló con código $LASTEXITCODE. Revisa la salida anterior."
+    Write-Warning "La compilación falló con código $LASTEXITCODE. Reintentando con Rebuild..."
+    $buildArgs[2] = '/t:Rebuild'
+    & $msbuildPath @buildArgs
+}
+if ($LASTEXITCODE -ne 0) {
+    throw "La compilación falló con código $LASTEXITCODE. Revisa la salida anterior o usa -NoBuild y compila con F5 en el editor de NinjaScript."
 }
 
 # MSBuild deja el DLL en bin\Release. NinjaTrader carga el DLL de la raíz de Custom.
