@@ -160,6 +160,11 @@ struct SyncPayload {
     positions: Vec<PositionPayload>,
     #[serde(default)]
     deals: Vec<DealPayload>,
+    /// Solo NT8: el payload contiene todas las ejecuciones desde esta fecha UTC.
+    /// Los deals guardados a partir de ella que no vengan en el payload se eliminan,
+    /// igual que las operaciones que se queden sin deals.
+    #[serde(default)]
+    history_from_utc: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -724,6 +729,13 @@ async fn sync_for(
     let stats = ingest_sync(&state.db, &account.id, offset, &payload)
         .await
         .map_err(internal)?;
+    if provider == PROVIDER_NT8
+        && let Some(from_utc) = payload.history_from_utc.as_deref().and_then(parse_utc)
+    {
+        reconcile_history(&state.db, &account.id, &from_utc, &payload)
+            .await
+            .map_err(internal)?;
+    }
 
     let _ = state.app.emit(
         "trades://updated",
@@ -1037,6 +1049,78 @@ async fn ingest_sync(
 
     stats.new_trades = created_trades.len() as i64;
     Ok(stats)
+}
+
+/// Elimina deals guardados desde `from_utc` que ya no existen en el puente (por
+/// ejemplo, ejecuciones agrupadas con un ticket antiguo) y recalcula o borra las
+/// operaciones afectadas.
+async fn reconcile_history(
+    pool: &SqlitePool,
+    account_id: &str,
+    from_utc: &str,
+    payload: &SyncPayload,
+) -> AppResult<u64> {
+    let sent: HashSet<i64> = payload.deals.iter().map(|deal| deal.deal_ticket).collect();
+    let open_tickets: HashSet<i64> = payload.positions.iter().map(|p| p.ticket).collect();
+
+    let rows = sqlx::query(
+        "SELECT id, trade_id, deal_ticket FROM deals WHERE account_id = ? AND time_utc >= ?",
+    )
+    .bind(account_id)
+    .bind(from_utc)
+    .fetch_all(pool)
+    .await?;
+
+    let mut removed = 0u64;
+    let mut touched: HashSet<String> = HashSet::new();
+    for row in rows {
+        let ticket: i64 = row.get("deal_ticket");
+        if sent.contains(&ticket) {
+            continue;
+        }
+        let id: String = row.get("id");
+        touched.insert(row.get("trade_id"));
+        sqlx::query("DELETE FROM deals WHERE id = ?")
+            .bind(&id)
+            .execute(pool)
+            .await?;
+        removed += 1;
+    }
+
+    // Operaciones sin deals (p. ej. agrupaciones antiguas) que no son posiciones abiertas.
+    let orphans = sqlx::query(
+        "SELECT t.id, t.position_ticket FROM trades t
+         WHERE t.account_id = ?
+           AND NOT EXISTS (SELECT 1 FROM deals d WHERE d.trade_id = t.id)",
+    )
+    .bind(account_id)
+    .fetch_all(pool)
+    .await?;
+    for row in orphans {
+        let ticket: i64 = row.get("position_ticket");
+        let id: String = row.get("id");
+        touched.remove(&id);
+        if open_tickets.contains(&ticket) {
+            continue;
+        }
+        sqlx::query("DELETE FROM trades WHERE id = ?")
+            .bind(&id)
+            .execute(pool)
+            .await?;
+    }
+
+    for trade_id in touched {
+        let ticket: Option<i64> = sqlx::query("SELECT position_ticket FROM trades WHERE id = ?")
+            .bind(&trade_id)
+            .fetch_optional(pool)
+            .await?
+            .map(|row| row.get("position_ticket"));
+        if let Some(ticket) = ticket {
+            rebuild_trade_from_deals(pool, &trade_id, open_tickets.contains(&ticket)).await?;
+        }
+    }
+
+    Ok(removed)
 }
 
 async fn find_trade_id(
@@ -1754,6 +1838,7 @@ mod tests {
                     time_utc: Some("2026-11-03T10:00:00Z".to_string()),
                 },
             ],
+            history_from_utc: None,
         };
 
         let stats = ingest_sync(&pool, &account.id, 0, &payload)
@@ -1780,5 +1865,107 @@ mod tests {
         assert_eq!(open.get::<String, _>("state"), "open");
         assert!((open.get::<f64, _>("volume_current") - 1.0).abs() < 0.001);
         assert!((open.get::<f64, _>("volume_initial") - 1.0).abs() < 0.001);
+    }
+
+    fn nt8_deal(
+        deal_ticket: i64,
+        position_ticket: i64,
+        kind: i32,
+        entry: i64,
+        price: f64,
+        profit: f64,
+        time: &str,
+    ) -> DealPayload {
+        DealPayload {
+            deal_ticket,
+            position_ticket,
+            symbol: "NQ 12-26".to_string(),
+            kind,
+            entry,
+            volume: 2.0,
+            price,
+            profit,
+            commission: 0.0,
+            swap: 0.0,
+            magic: Some(0),
+            comment: None,
+            reason: -1,
+            time_server: time.to_string(),
+            time: None,
+            time_utc: Some(format!("{time}Z")),
+        }
+    }
+
+    #[tokio::test]
+    async fn reconciles_ninjatrader_history_and_drops_stale_groupings() {
+        let pool = test_pool().await;
+        let (account, _) = ensure_account(
+            &pool,
+            PROVIDER_NT8,
+            3,
+            "Apex",
+            None,
+            None,
+            Some("USD"),
+            None,
+        )
+        .await
+        .expect("account");
+
+        // Agrupación antigua: dos entradas en la misma operación, sin salidas.
+        let stale = SyncPayload {
+            login: 3,
+            server: "Apex".to_string(),
+            broker_utc_offset_seconds: Some(0),
+            symbols: vec![],
+            positions: vec![],
+            deals: vec![
+                nt8_deal(2, 999, 0, 0, 27331.75, 0.0, "2026-11-06T14:00:00"),
+                nt8_deal(4, 999, 0, 0, 27339.5, 0.0, "2026-11-06T14:10:00"),
+            ],
+            history_from_utc: None,
+        };
+        ingest_sync(&pool, &account.id, 0, &stale)
+            .await
+            .expect("stale");
+
+        let fixed = SyncPayload {
+            login: 3,
+            server: "Apex".to_string(),
+            broker_utc_offset_seconds: Some(0),
+            symbols: vec![],
+            positions: vec![],
+            deals: vec![
+                nt8_deal(101, 501, 0, 0, 27331.75, 0.0, "2026-11-06T14:00:00"),
+                nt8_deal(102, 501, 1, 1, 27334.5, 110.0, "2026-11-06T14:05:00"),
+                nt8_deal(103, 502, 0, 0, 27339.5, 0.0, "2026-11-06T14:10:00"),
+                nt8_deal(104, 502, 1, 1, 27344.0, 180.0, "2026-11-06T14:15:00"),
+            ],
+            history_from_utc: Some("2000-01-01T00:00:00Z".to_string()),
+        };
+        ingest_sync(&pool, &account.id, 0, &fixed)
+            .await
+            .expect("fixed");
+        reconcile_history(&pool, &account.id, "2000-01-01T00:00:00Z", &fixed)
+            .await
+            .expect("reconcile");
+
+        let trades = sqlx::query(
+            "SELECT position_ticket, state, profit_net FROM trades ORDER BY position_ticket",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("trades");
+        assert_eq!(trades.len(), 2);
+        assert_eq!(trades[0].get::<i64, _>("position_ticket"), 501);
+        assert_eq!(trades[0].get::<String, _>("state"), "closed");
+        assert!((trades[1].get::<f64, _>("profit_net") - 180.0).abs() < 0.001);
+
+        let deals: i64 = sqlx::query("SELECT COUNT(*) AS n FROM deals")
+            .fetch_one(&pool)
+            .await
+            .expect("deals")
+            .get("n");
+        assert_eq!(deals, 4);
     }
 }

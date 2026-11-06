@@ -31,13 +31,15 @@ namespace NinjaTrader.NinjaScript.AddOns
     /// </summary>
     public class JournalTradingBridge : AddOnBase
     {
-        private const string AddOnVersion = "1.0.0";
+        private const string AddOnVersion = "1.1.0";
+        private const int IncrementalDays = 7;
+        private static readonly DateTime HistoryEpoch = new DateTime(2000, 1, 1);
         private const string ConfigFileName = "JournalTradingBridge.json";
         private const string DefaultApiUrl = "http://127.0.0.1:4477";
 
         private readonly HttpClient http = new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
         private readonly Dictionary<long, SyncRequest> syncRequests = new Dictionary<long, SyncRequest>();
-        private readonly HashSet<long> initializedAccounts = new HashSet<long>();
+        private readonly Dictionary<long, AccountHistory> histories = new Dictionary<long, AccountHistory>();
         private readonly List<BarsRequest> activeRequests = new List<BarsRequest>();
 
         private Timer timer;
@@ -45,7 +47,6 @@ namespace NinjaTrader.NinjaScript.AddOns
         private DateTime lastConfigRead = DateTime.MinValue;
         private DateTime lastHeartbeat = DateTime.MinValue;
         private DateTime lastSync = DateTime.MinValue;
-        private DateTime lastSuccessfulSync = DateTime.MinValue;
         private DateTime lastLogAt = DateTime.MinValue;
         private string lastLogMessage = "";
         private bool configMissingLogged;
@@ -230,7 +231,7 @@ namespace NinjaTrader.NinjaScript.AddOns
                 { "company", "NinjaTrader 8 · " + ConnectionName(account) },
                 { "currency", CurrencyCode(currency) },
                 { "leverage", null },
-                { "broker_utc_offset_seconds", (int)TimeZoneInfo.Local.GetUtcOffset(now).TotalSeconds },
+                { "broker_utc_offset_seconds", UtcOffsetSeconds(now) },
                 { "balance", SafeAccountValue(account, AccountItem.CashValue, currency) },
                 { "equity", SafeAccountValue(account, AccountItem.NetLiquidation, currency) },
                 { "margin", SafeAccountValue(account, AccountItem.InitialMargin, currency) },
@@ -328,45 +329,36 @@ namespace NinjaTrader.NinjaScript.AddOns
             SyncRequest request;
             lock (syncRequests)
             {
-                if (!syncRequests.TryGetValue(account.Id, out request))
+                syncRequests.TryGetValue(account.Id, out request);
+            }
+
+            AccountHistory history;
+            lock (histories)
+            {
+                if (!histories.TryGetValue(account.Id, out history))
                 {
-                    request = new SyncRequest
-                    {
-                        ForceFull = false,
-                        AllHistory = false,
-                        FromDays = config.HistoryDays
-                    };
+                    history = new AccountHistory();
+                    histories[account.Id] = history;
                 }
             }
 
-            bool firstSync;
-            lock (syncRequests)
-            {
-                firstSync = !initializedAccounts.Contains(account.Id);
-            }
-
+            // Una sincronización completa relee todo el historial de NT8 para poder reconstruir
+            // las operaciones desde una posición plana; historyDays solo limita lo que se envía.
+            bool full = request != null || !history.Initialized;
             DateTime now = DateTime.Now;
-            DateTime from;
-            if (request.ForceFull || firstSync)
-            {
-                int days = request.FromDays > 0 ? request.FromDays : config.HistoryDays;
-                from = request.AllHistory || days <= 0
-                    ? new DateTime(2000, 1, 1)
-                    : now.AddDays(-days);
-            }
-            else
-            {
-                from = lastSuccessfulSync == DateTime.MinValue
-                    ? new DateTime(2000, 1, 1)
-                    : lastSuccessfulSync.AddDays(-7);
-            }
+            int days = request != null && request.FromDays > 0 ? request.FromDays : config.HistoryDays;
+            bool allHistory = (request != null && request.AllHistory) || days <= 0;
+            DateTime windowStart = allHistory ? HistoryEpoch : now.AddDays(-days);
 
-            DateTime to = now.AddDays(1);
-            Dictionary<long, Execution> executions = new Dictionary<long, Execution>();
+            Dictionary<string, Execution> executions = full
+                ? new Dictionary<string, Execution>(StringComparer.Ordinal)
+                : history.Executions;
+            DateTime loadFrom = full ? HistoryEpoch : history.LastLoad.AddDays(-2);
+            bool historyOk = true;
 
             try
             {
-                Collection<Execution> historical = Execution.DbGet(account, from, to);
+                Collection<Execution> historical = Execution.DbGet(account, loadFrom, now.AddDays(1));
                 if (historical != null)
                 {
                     foreach (Execution execution in historical)
@@ -375,7 +367,10 @@ namespace NinjaTrader.NinjaScript.AddOns
             }
             catch (Exception ex)
             {
+                historyOk = false;
                 Log("Historial " + account.Name + ": " + ex.Message);
+                if (full && history.Initialized)
+                    executions = history.Executions;
             }
 
             try
@@ -388,83 +383,173 @@ namespace NinjaTrader.NinjaScript.AddOns
                 Log("Ejecuciones " + account.Name + ": " + ex.Message);
             }
 
-            List<PositionGroup> groups = BuildPositionGroups(executions.Values);
-            Dictionary<string, object> payload = BuildSyncPayload(account, groups);
+            List<TradeGroup> trades = BuildTrades(account, executions.Values);
+            DateTime sendFrom = full ? windowStart : now.AddDays(-IncrementalDays);
+            List<TradeGroup> toSend = trades
+                .Where(trade => trade.IsOpen || trade.LastTime >= sendFrom)
+                .ToList();
+
+            DateTime? reconcileFrom = full && historyOk ? (DateTime?)windowStart : null;
+            Dictionary<string, object> payload = BuildSyncPayload(account, toSend, reconcileFrom);
             Dictionary<string, object> response = await PostAsync("/api/v1/nt8/sync", payload);
             if (response == null)
                 return;
 
+            history.Executions = executions;
+            history.Initialized = true;
+            history.LastLoad = now;
             lock (syncRequests)
             {
-                syncRequests.Remove(account.Id);
-                initializedAccounts.Add(account.Id);
+                SyncRequest current;
+                if (request != null
+                    && syncRequests.TryGetValue(account.Id, out current)
+                    && ReferenceEquals(current, request))
+                    syncRequests.Remove(account.Id);
             }
-            lastSuccessfulSync = now;
 
-            int openPositions = groups.Count(group => group.IsOpen);
+            int deals = toSend.Sum(trade => trade.Legs.Count);
+            int openPositions = toSend.Count(trade => trade.IsOpen);
             Log(string.Format(
-                "Sync {0}: {1} ejecuciones, {2} posiciones abiertas.",
+                "Sync {0}{1}: {2} ejecuciones en NT8, {3} operaciones y {4} deals enviados, {5} posiciones abiertas.",
                 account.Name,
+                full ? " (completa)" : "",
                 executions.Count,
+                toSend.Count,
+                deals,
                 openPositions));
         }
 
-        private List<PositionGroup> BuildPositionGroups(IEnumerable<Execution> executions)
+        /// <summary>
+        /// Reconstruye las operaciones recorriendo las ejecuciones de cada instrumento en orden
+        /// cronológico y acumulando la posición neta: una operación empieza cuando la posición
+        /// sale de cero y termina cuando vuelve a cero. Las ejecuciones que invierten la posición
+        /// se dividen en una salida y una nueva entrada.
+        ///
+        /// No se usa Execution.Position: en NT8 es el tamaño de la posición tras la ejecución,
+        /// no un identificador de posición.
+        /// </summary>
+        private static List<TradeGroup> BuildTrades(Account account, IEnumerable<Execution> executions)
         {
-            Dictionary<long, PositionGroup> groups = new Dictionary<long, PositionGroup>();
-            foreach (Execution execution in executions.OrderBy(item => item.Time))
+            List<TradeGroup> result = new List<TradeGroup>();
+
+            foreach (IGrouping<string, Execution> byInstrument in executions.GroupBy(item => item.Instrument.FullName))
             {
-                long key = PositionKey(execution);
-                PositionGroup group;
-                if (!groups.TryGetValue(key, out group))
+                string instrumentName = byInstrument.Key;
+                double priceValue = 0;
+                bool priceValueReady = false;
+                TradeGroup current = null;
+                int net = 0;
+
+                IEnumerable<Execution> ordered = byInstrument
+                    .OrderBy(item => item.Time)
+                    .ThenBy(item => item.Id)
+                    .ThenBy(item => item.ExecutionId ?? "", StringComparer.Ordinal);
+
+                foreach (Execution execution in ordered)
                 {
-                    group = new PositionGroup
+                    int sign = DirectionOf(execution);
+                    if (sign == 0 || execution.Quantity <= 0)
+                        continue;
+
+                    if (!priceValueReady)
                     {
-                        Key = key,
-                        Instrument = execution.Instrument
-                    };
-                    groups[key] = group;
+                        priceValue = PriceValuePerUnit(account, execution.Instrument);
+                        priceValueReady = true;
+                    }
+
+                    int quantity = execution.Quantity;
+                    int remaining = quantity;
+                    double costs = SafeDouble(execution.Commission) + SafeDouble(execution.Fee);
+                    string executionKey = ExecutionKey(execution);
+                    int leg = 0;
+
+                    if (current != null && net != 0 && Math.Sign(net) != sign)
+                    {
+                        int closeQuantity = Math.Min(remaining, Math.Abs(net));
+                        current.AddExit(
+                            execution,
+                            DealTicket(account, executionKey, leg),
+                            closeQuantity,
+                            costs * closeQuantity / quantity,
+                            priceValue);
+                        leg++;
+                        net += sign * closeQuantity;
+                        remaining -= closeQuantity;
+                        if (net == 0)
+                            current = null;
+                    }
+
+                    if (remaining > 0)
+                    {
+                        if (current == null)
+                        {
+                            current = new TradeGroup
+                            {
+                                Key = PositiveHash(account.Id.ToString(CultureInfo.InvariantCulture)
+                                    + "|" + instrumentName + "|" + executionKey + "|" + leg.ToString(CultureInfo.InvariantCulture)),
+                                Instrument = execution.Instrument,
+                                Side = sign > 0 ? MarketPosition.Long : MarketPosition.Short,
+                                FirstEntryTime = execution.Time
+                            };
+                            result.Add(current);
+                        }
+
+                        current.AddEntry(
+                            execution,
+                            DealTicket(account, executionKey, leg),
+                            remaining,
+                            costs * remaining / quantity);
+                        net += sign * remaining;
+                    }
                 }
-                group.Add(execution);
             }
 
-            return groups.Values.Where(group => group.EntryQuantity > 0).ToList();
+            return result;
         }
 
-        private Dictionary<string, object> BuildSyncPayload(Account account, List<PositionGroup> groups)
+        private Dictionary<string, object> BuildSyncPayload(
+            Account account,
+            List<TradeGroup> trades,
+            DateTime? reconcileFrom)
         {
             Dictionary<string, Dictionary<string, object>> symbols =
                 new Dictionary<string, Dictionary<string, object>>();
             List<object> deals = new List<object>();
             List<object> positions = new List<object>();
 
-            foreach (PositionGroup group in groups)
+            foreach (TradeGroup trade in trades)
             {
-                Instrument instrument = group.Instrument;
+                Instrument instrument = trade.Instrument;
                 if (instrument == null)
                     continue;
 
-                symbols[instrument.FullName] = BuildSymbol(account, instrument);
+                if (!symbols.ContainsKey(instrument.FullName))
+                    symbols[instrument.FullName] = BuildSymbol(account, instrument);
 
-                double tickSize = TickSize(instrument);
-                double priceValue = PriceValuePerUnit(account, instrument);
-                foreach (Execution execution in group.Executions)
-                    deals.Add(BuildDeal(account, execution, group));
+                foreach (TradeLeg leg in trade.Legs)
+                    deals.Add(BuildDeal(trade, leg));
 
-                if (group.IsOpen)
-                    positions.Add(BuildPosition(account, group, tickSize, priceValue));
+                if (trade.IsOpen)
+                {
+                    double tickSize = TickSize(instrument);
+                    double priceValue = PriceValuePerUnit(account, instrument);
+                    positions.Add(BuildPosition(account, trade, tickSize, priceValue));
+                }
             }
 
-            return new Dictionary<string, object>
+            Dictionary<string, object> payload = new Dictionary<string, object>
             {
                 { "login", account.Id },
                 { "server", ConnectionName(account) },
-                { "broker_utc_offset_seconds", (int)TimeZoneInfo.Local.GetUtcOffset(DateTime.Now).TotalSeconds },
+                { "broker_utc_offset_seconds", UtcOffsetSeconds(DateTime.Now) },
                 { "symbols", symbols.Values.ToList() },
                 { "positions", positions },
                 { "deals", deals },
                 { "server_time", IsoLocal(DateTime.Now) }
             };
+            if (reconcileFrom.HasValue)
+                payload["history_from_utc"] = IsoUtc(reconcileFrom.Value);
+            return payload;
         }
 
         private Dictionary<string, object> BuildSymbol(Account account, Instrument instrument)
@@ -485,39 +570,24 @@ namespace NinjaTrader.NinjaScript.AddOns
             };
         }
 
-        private Dictionary<string, object> BuildDeal(
-            Account account,
-            Execution execution,
-            PositionGroup group)
+        private static Dictionary<string, object> BuildDeal(TradeGroup trade, TradeLeg leg)
         {
-            int type = ExecutionType(execution, group);
-            int entry = execution.IsEntry ? 0 : 1;
-            double profit = 0.0;
-
-            if (execution.IsExit && group.EntryQuantity > 0)
-            {
-                double direction = group.Side == MarketPosition.Long ? 1.0 : -1.0;
-                double priceValue = PriceValuePerUnit(account, execution.Instrument);
-                profit = (execution.Price - group.AverageEntryPrice) * priceValue * execution.Quantity * direction;
-            }
-
-            double commission = -Math.Abs(SafeDouble(execution.Commission) + SafeDouble(execution.Fee));
-
+            Execution execution = leg.Execution;
             return new Dictionary<string, object>
             {
-                { "deal_ticket", ExecutionId(execution) },
-                { "position_ticket", group.Key },
+                { "deal_ticket", leg.DealTicket },
+                { "position_ticket", trade.Key },
                 { "symbol", execution.Instrument.FullName },
-                { "type", type },
-                { "entry", entry },
-                { "volume", (double)execution.Quantity },
+                { "type", DirectionOf(execution) > 0 ? 0 : 1 },
+                { "entry", leg.IsEntry ? 0 : 1 },
+                { "volume", (double)leg.Quantity },
                 { "price", SafeDouble(execution.Price) },
-                { "profit", profit },
-                { "commission", commission },
+                { "profit", leg.Profit },
+                { "commission", -Math.Abs(leg.Commission) },
                 { "swap", 0.0 },
                 { "magic", 0 },
                 { "comment", CommentFor(execution) },
-                { "reason", ReasonFor(execution) },
+                { "reason", leg.IsEntry ? -1 : ReasonFor(execution) },
                 { "time_server", IsoLocal(execution.Time) },
                 { "time", ToEpoch(execution.Time) },
                 { "time_utc", IsoUtc(execution.Time) }
@@ -526,20 +596,20 @@ namespace NinjaTrader.NinjaScript.AddOns
 
         private Dictionary<string, object> BuildPosition(
             Account account,
-            PositionGroup group,
+            TradeGroup trade,
             double tickSize,
             double priceValue)
         {
-            Instrument instrument = group.Instrument;
-            int side = group.Side == MarketPosition.Long ? 0 : 1;
+            Instrument instrument = trade.Instrument;
+            int side = trade.Side == MarketPosition.Long ? 0 : 1;
             double stopPrice;
             double targetPrice;
-            FindStopTarget(account, instrument, group.Side, group.AverageEntryPrice, out stopPrice, out targetPrice);
+            FindStopTarget(account, instrument, trade.Side, trade.OpenAveragePrice, out stopPrice, out targetPrice);
 
             double profit = 0.0;
             try
             {
-                Position position = FindPosition(account, instrument, group.Side);
+                Position position = FindPosition(account, instrument, trade.Side);
                 if (position != null)
                 {
                     double marketPrice = position.GetMarketPrice();
@@ -551,11 +621,11 @@ namespace NinjaTrader.NinjaScript.AddOns
 
             return new Dictionary<string, object>
             {
-                { "ticket", group.Key },
+                { "ticket", trade.Key },
                 { "symbol", instrument.FullName },
                 { "type", side },
-                { "volume", group.OpenQuantity },
-                { "price_open", group.AverageEntryPrice },
+                { "volume", (double)trade.OpenQuantity },
+                { "price_open", trade.OpenAveragePrice },
                 { "sl", stopPrice > 0 ? (object)stopPrice : null },
                 { "tp", targetPrice > 0 ? (object)targetPrice : null },
                 { "profit", profit },
@@ -563,68 +633,66 @@ namespace NinjaTrader.NinjaScript.AddOns
                 { "commission", 0.0 },
                 { "magic", 0 },
                 { "comment", "" },
-                { "time_server", IsoLocal(group.FirstEntryTime) },
-                { "time", ToEpoch(group.FirstEntryTime) },
-                { "time_utc", IsoUtc(group.FirstEntryTime) },
+                { "time_server", IsoLocal(trade.FirstEntryTime) },
+                { "time", ToEpoch(trade.FirstEntryTime) },
+                { "time_utc", IsoUtc(trade.FirstEntryTime) },
                 { "tick_size", tickSize },
                 { "tick_value", priceValue * tickSize }
             };
         }
 
-        private static int ExecutionType(Execution execution, PositionGroup group)
+        /// <summary>+1 compra, -1 venta, 0 desconocido. En una ejecución de NT8,
+        /// MarketPosition indica el sentido de la ejecución (Long = compra).</summary>
+        private static int DirectionOf(Execution execution)
         {
+            if (execution.MarketPosition == MarketPosition.Long)
+                return 1;
+            if (execution.MarketPosition == MarketPosition.Short)
+                return -1;
+
             try
             {
                 if (execution.Order != null)
                 {
                     OrderAction action = execution.Order.OrderAction;
-                    return action == OrderAction.Buy || action == OrderAction.BuyToCover ? 0 : 1;
+                    return action == OrderAction.Buy || action == OrderAction.BuyToCover ? 1 : -1;
                 }
             }
             catch { }
-
-            if (execution.IsExit)
-                return group.Side == MarketPosition.Long ? 1 : 0;
-
-            return execution.MarketPosition == MarketPosition.Long ? 0 : 1;
+            return 0;
         }
 
-        private static long ExecutionId(Execution execution)
+        private static string ExecutionKey(Execution execution)
         {
-            if (execution.Id > 0)
-                return execution.Id;
-
-            return StableHash(execution.ExecutionId ?? execution.ToString());
+            if (!string.IsNullOrWhiteSpace(execution.ExecutionId))
+                return execution.ExecutionId;
+            return "db:" + execution.Id.ToString(CultureInfo.InvariantCulture);
         }
 
-        private static long PositionKey(Execution execution)
+        private static long DealTicket(Account account, string executionKey, int leg)
         {
-            long baseKey;
-            if (execution.Position > 0)
-                baseKey = execution.Position;
-            else if (execution.PositionStrategy > 0)
-                baseKey = 1000000000L + execution.PositionStrategy;
-            else
-                baseKey = StableHash(execution.ExecutionId ?? execution.ToString());
-
-            string instrument = execution.Instrument != null ? execution.Instrument.FullName : "?";
-            return StableHash(instrument + "|" + baseKey.ToString(CultureInfo.InvariantCulture));
+            return PositiveHash(account.Id.ToString(CultureInfo.InvariantCulture)
+                + "|" + executionKey + "|" + leg.ToString(CultureInfo.InvariantCulture));
         }
 
-        private static void AddExecution(Dictionary<long, Execution> map, Execution execution)
+        private static long PositiveHash(string value)
+        {
+            long hash = StableHash(value);
+            return hash > 0 ? hash : 1;
+        }
+
+        private static void AddExecution(Dictionary<string, Execution> map, Execution execution)
         {
             if (execution == null || execution.Instrument == null)
                 return;
             if (execution.Quantity <= 0)
                 return;
-            if (!execution.IsEntry && !execution.IsExit)
-                return;
             if (execution.IsSod)
                 return;
 
-            long id = ExecutionId(execution);
-            if (id > 0)
-                map[id] = execution;
+            // Se deduplica por ExecutionId: la misma ejecución puede llegar desde la base de
+            // datos de NT8 y desde Account.Executions con distinto Id interno.
+            map[ExecutionKey(execution)] = execution;
         }
 
         private void FindStopTarget(
@@ -728,10 +796,12 @@ namespace NinjaTrader.NinjaScript.AddOns
             }
             catch { }
 
-            string text = CommentFor(execution).ToLowerInvariant();
-            if (text.Contains("stop") || text.Contains("sl"))
+            // Las ejecuciones del historial no traen Order; NT8 guarda el nombre de la orden
+            // (Stop1, Target1, Close, Exit...) en Execution.Name.
+            string text = CommentFor(execution).Trim().ToLowerInvariant();
+            if (text.StartsWith("stop") || text == "sl" || text.StartsWith("sl ") || text.Contains("stop loss"))
                 return 4;
-            if (text.Contains("target") || text.Contains("profit") || text.Contains("tp"))
+            if (text.StartsWith("target") || text.StartsWith("profit") || text == "tp" || text.StartsWith("tp "))
                 return 5;
 
             return -1;
@@ -1278,12 +1348,39 @@ namespace NinjaTrader.NinjaScript.AddOns
             return value.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture);
         }
 
+        /// <summary>Zona horaria configurada en NT8 (Herramientas > Opciones > General).
+        /// Las horas de las ejecuciones vienen expresadas en ella.</summary>
+        private static TimeZoneInfo NtTimeZone()
+        {
+            try
+            {
+                TimeZoneInfo zone = NinjaTrader.Core.Globals.GeneralOptions.TimeZoneInfo;
+                if (zone != null)
+                    return zone;
+            }
+            catch { }
+            return TimeZoneInfo.Local;
+        }
+
+        private static int UtcOffsetSeconds(DateTime value)
+        {
+            try
+            {
+                DateTime local = DateTime.SpecifyKind(value, DateTimeKind.Unspecified);
+                return (int)NtTimeZone().GetUtcOffset(local).TotalSeconds;
+            }
+            catch
+            {
+                return (int)TimeZoneInfo.Local.GetUtcOffset(DateTime.Now).TotalSeconds;
+            }
+        }
+
         private static string IsoUtc(DateTime value)
         {
             try
             {
                 DateTime local = DateTime.SpecifyKind(value, DateTimeKind.Unspecified);
-                DateTime utc = TimeZoneInfo.ConvertTimeToUtc(local, TimeZoneInfo.Local);
+                DateTime utc = TimeZoneInfo.ConvertTimeToUtc(local, NtTimeZone());
                 return utc.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
             }
             catch
@@ -1436,49 +1533,89 @@ namespace NinjaTrader.NinjaScript.AddOns
             public int FromDays;
         }
 
-        private class PositionGroup
+        private class AccountHistory
+        {
+            public Dictionary<string, Execution> Executions =
+                new Dictionary<string, Execution>(StringComparer.Ordinal);
+            public DateTime LastLoad = DateTime.MinValue;
+            public bool Initialized;
+        }
+
+        private class TradeLeg
+        {
+            public Execution Execution;
+            public long DealTicket;
+            public int Quantity;
+            public bool IsEntry;
+            public double Profit;
+            public double Commission;
+        }
+
+        private class TradeGroup
         {
             public long Key;
             public Instrument Instrument;
             public MarketPosition Side;
-            public double EntryQuantity;
+            public int EntryQuantity;
             public double EntryValue;
-            public double ExitQuantity;
+            public int OpenQuantity;
+            public double OpenAveragePrice;
             public DateTime FirstEntryTime;
-            public readonly List<Execution> Executions = new List<Execution>();
+            public DateTime LastTime;
+            public readonly List<TradeLeg> Legs = new List<TradeLeg>();
+
+            public bool IsOpen
+            {
+                get { return OpenQuantity > 0; }
+            }
 
             public double AverageEntryPrice
             {
                 get { return EntryQuantity > 0 ? EntryValue / EntryQuantity : 0; }
             }
 
-            public double OpenQuantity
+            public void AddEntry(Execution execution, long dealTicket, int quantity, double commission)
             {
-                get { return EntryQuantity - ExitQuantity; }
+                double price = SafeDouble(execution.Price);
+                OpenAveragePrice = OpenQuantity + quantity > 0
+                    ? (OpenAveragePrice * OpenQuantity + price * quantity) / (OpenQuantity + quantity)
+                    : price;
+                OpenQuantity += quantity;
+                EntryQuantity += quantity;
+                EntryValue += price * quantity;
+                LastTime = execution.Time;
+                Legs.Add(new TradeLeg
+                {
+                    Execution = execution,
+                    DealTicket = dealTicket,
+                    Quantity = quantity,
+                    IsEntry = true,
+                    Profit = 0.0,
+                    Commission = commission
+                });
             }
 
-            public bool IsOpen
+            public void AddExit(
+                Execution execution,
+                long dealTicket,
+                int quantity,
+                double commission,
+                double priceValue)
             {
-                get { return OpenQuantity > 0.0000001; }
-            }
-
-            public void Add(Execution execution)
-            {
-                Executions.Add(execution);
-                if (execution.IsEntry)
+                double direction = Side == MarketPosition.Long ? 1.0 : -1.0;
+                double price = SafeDouble(execution.Price);
+                double profit = (price - OpenAveragePrice) * priceValue * quantity * direction;
+                OpenQuantity = Math.Max(0, OpenQuantity - quantity);
+                LastTime = execution.Time;
+                Legs.Add(new TradeLeg
                 {
-                    if (EntryQuantity <= 0)
-                    {
-                        Side = execution.MarketPosition;
-                        FirstEntryTime = execution.Time;
-                    }
-                    EntryQuantity += execution.Quantity;
-                    EntryValue += execution.Price * execution.Quantity;
-                }
-                else if (execution.IsExit)
-                {
-                    ExitQuantity += execution.Quantity;
-                }
+                    Execution = execution,
+                    DealTicket = dealTicket,
+                    Quantity = quantity,
+                    IsEntry = false,
+                    Profit = profit,
+                    Commission = commission
+                });
             }
         }
 

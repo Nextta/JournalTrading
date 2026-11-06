@@ -56,9 +56,9 @@ Escribir configuración NT8**. El AddOn detecta cambios en el archivo sin reinic
 ## Qué envía
 
 - **Heartbeat** cada `heartbeatSeconds`: balance, equity, margen, divisa y datos de la cuenta.
-- **Ejecuciones** cada `syncSeconds`: entradas y salidas agrupadas por cuenta, instrumento y
-  posición. El beneficio de cada salida se calcula con el precio medio de entrada y el
-  `PointValue` del instrumento.
+- **Ejecuciones** cada `syncSeconds`: entradas y salidas agrupadas en operaciones (de plano a
+  plano) por cuenta e instrumento. El beneficio de cada salida se calcula con el precio medio de
+  la posición abierta y el `PointValue` del instrumento.
 - **Posiciones abiertas**: volumen, precio medio, P&L no realizado y SL/TP aproximados a partir
   de las órdenes activas.
 - **Velas** bajo demanda: la app solicita un timeframe y el AddOn usa `BarsRequest` para
@@ -67,8 +67,16 @@ Escribir configuración NT8**. El AddOn detecta cambios en el archivo sin reinic
 ## Historial
 
 El AddOn consulta la base de datos local de NinjaTrader con `Execution.DbGet(account, from, to)`.
-La primera sincronización usa `historyDays` (0 = todo el historial disponible). Después envía
-solo una ventana incremental de los últimos días y las ejecuciones de la sesión actual.
+En la primera sincronización (y al pulsar **Sincronizar** en la app) lee todo el historial de NT8
+y reconstruye las operaciones recorriendo las ejecuciones de cada instrumento en orden y
+acumulando la posición neta: una operación empieza cuando la posición sale de cero y termina
+cuando vuelve a cero; las ejecuciones que invierten la posición se dividen en salida y entrada.
+`historyDays` (0 = todo) solo limita qué operaciones se envían. Después solo envía las
+operaciones abiertas o con actividad en los últimos 7 días.
+
+Tras una sincronización completa, la app elimina los deals de NT8 de ese periodo que ya no
+existen en NinjaTrader y las operaciones que se quedan sin deals (por ejemplo, agrupaciones
+generadas por versiones anteriores del AddOn).
 
 Las cuentas de backtest y playback se ignoran.
 
@@ -87,8 +95,8 @@ Las cuentas de backtest y playback se ignoran.
   Si usas un CFD con un Point Value personalizado, ajústalo en el Instrument Manager de NT8.
 - El SL/TP de posiciones abiertas se infiere de las órdenes activas; si no hay órdenes de stop
   o target, se envía `null`.
-- El AddOn usa la hora local del equipo como hora del bróker. La app agrupa los días con esa
-  hora; cambia la zona horaria de Windows si tu bróker usa otra.
+- El AddOn usa la zona horaria configurada en NT8 (**Herramientas > Opciones > General**) como
+  hora del bróker. La app agrupa los días con esa hora.
 
 ## Solución de problemas
 

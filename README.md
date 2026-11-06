@@ -162,7 +162,8 @@ Configuración (`Documents\NinjaTrader 8\bin\Custom\JournalTradingBridge.json`):
 Notas:
 
 - El AddOn lee el historial de ejecuciones de la base de datos local de NT8 (`Execution.DbGet`) y combina las ejecuciones de la sesión actual.
-- Las operaciones se agrupan por cuenta, instrumento y posición de NT8. Cada ejecución se envía como un deal; el beneficio de las salidas se calcula con el precio medio de entrada y el `PointValue` del instrumento.
+- Las operaciones se reconstruyen por cuenta e instrumento siguiendo la posición neta (de plano a plano; las inversiones se dividen). Cada ejecución se envía como un deal; el beneficio de las salidas se calcula con el precio medio de la posición y el `PointValue` del instrumento.
+- En cada sincronización completa la app elimina los deals de NT8 que ya no existen en NinjaTrader y las operaciones que se quedan vacías.
 - Las posiciones abiertas incluyen SL/TP aproximados a partir de las órdenes activas de NT8.
 - Las velas se solicitan al AddOn bajo demanda con `BarsRequest` y se cachean en SQLite.
 - Los símbolos de futuros se guardan con el contrato completo (por ejemplo, `ES 12-25`). Si el contrato ha expirado, el AddOn intenta resolverlo con `GetInstrumentFuzzy`.
@@ -317,7 +318,7 @@ JournalTrading/
 - El **diario** se identifica por cuenta y fecha del bróker.
 - Cada **activo del día** se identifica por diario y símbolo.
 - Cada **operación** se identifica por cuenta y ticket de posición. En NT8 el ticket se deriva de forma estable del instrumento y de la posición de la ejecución.
-- Los **deals** se identifican por cuenta y ticket de deal. En NT8 se usa el identificador de la ejecución.
+- Los **deals** se identifican por cuenta y ticket de deal. En NT8 se deriva del `ExecutionId` de la ejecución.
 - Las **velas** se cachean por operación y timeframe.
 - Los puntos de la estrategia se copian como instantánea al activo del día, de modo que cambios posteriores en la estrategia no alteran el pasado.
 - Se guarda la hora del bróker y la hora UTC; los agrupamientos diarios usan la fecha del bróker.
