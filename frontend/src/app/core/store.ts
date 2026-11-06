@@ -4,7 +4,7 @@ import { ApiService, type SeriesUpdatedEvent } from './api.service';
 import type {
   Account,
   Bootstrap,
-  Mt5Status,
+  BridgeStatus,
   SettingsResponse,
   Strategy,
 } from './models';
@@ -21,7 +21,7 @@ export class Store {
   readonly settings = signal<SettingsResponse | null>(null);
   readonly dataVersion = signal(0);
   readonly seriesVersion = signal(0);
-  readonly lastMt5Event = signal<string | null>(null);
+  readonly lastBridgeEvent = signal<string | null>(null);
 
   readonly activeAccount = computed(() => {
     const settings = this.settings();
@@ -47,13 +47,24 @@ export class Store {
     this.accounts().filter((account) => account.status === 'archived'),
   );
 
-  readonly mt5 = computed<Mt5Status | null>(() => this.settings()?.mt5 ?? null);
+  readonly mt5 = computed<BridgeStatus | null>(() => this.settings()?.mt5 ?? null);
+  readonly nt8 = computed<BridgeStatus | null>(() => this.settings()?.nt8 ?? null);
 
-  readonly mt5Connected = computed(() => {
-    const status = this.mt5();
-    if (!status?.connected || !status.lastHeartbeatAt) return false;
-    const parsed = new Date(status.lastHeartbeatAt).getTime();
-    return Number.isFinite(parsed) && Date.now() - parsed < 20_000;
+  readonly mt5Connected = computed(() => this.isConnected(this.mt5()));
+  readonly nt8Connected = computed(() => this.isConnected(this.nt8()));
+  readonly bridgeConnected = computed(() => this.mt5Connected() || this.nt8Connected());
+
+  readonly activeProvider = computed(() => this.activeAccount()?.provider ?? 'mt5');
+
+  readonly activeAccountConnected = computed(() =>
+    this.activeProvider() === 'ninjatrader' ? this.nt8Connected() : this.mt5Connected(),
+  );
+
+  readonly bridgeLabel = computed(() => {
+    if (this.activeProvider() === 'ninjatrader') {
+      return this.nt8Connected() ? 'NT8 conectado' : 'NT8 sin conexión';
+    }
+    return this.mt5Connected() ? 'MT5 conectado' : 'MT5 sin conexión';
   });
 
   readonly currency = computed(() => this.activeAccount()?.currency ?? 'USD');
@@ -80,43 +91,58 @@ export class Store {
     this.settings.set(bootstrap.settings);
   }
 
+  private isConnected(status: BridgeStatus | null): boolean {
+    if (!status?.connected || !status.lastHeartbeatAt) return false;
+    const parsed = new Date(status.lastHeartbeatAt).getTime();
+    return Number.isFinite(parsed) && Date.now() - parsed < 20_000;
+  }
+
+  private applyHeartbeat(payload: Record<string, unknown>, provider: 'mt5' | 'nt8'): void {
+    const accountId = payload['accountId'] as string | undefined;
+    const balance = payload['balance'] as number | undefined;
+    const equity = payload['equity'] as number | undefined;
+    const now = new Date().toISOString();
+    if (accountId) {
+      this.accounts.update((accounts) =>
+        accounts.map((account) =>
+          account.id === accountId
+            ? {
+                ...account,
+                balance: balance ?? account.balance,
+                equity: equity ?? account.equity,
+                lastHeartbeatAt: now,
+              }
+            : account,
+        ),
+      );
+    }
+    this.settings.update((current) => {
+      if (!current) return current;
+      const status = provider === 'nt8' ? current.nt8 : current.mt5;
+      const updated: BridgeStatus = {
+        ...status,
+        connected: true,
+        lastHeartbeatAt: now,
+      };
+      return provider === 'nt8'
+        ? { ...current, nt8: updated }
+        : { ...current, mt5: updated };
+    });
+  }
+
   private async bindEvents(): Promise<void> {
     await this.api.onMt5Status((status) => {
       this.settings.update((current) =>
         current ? { ...current, mt5: status } : current,
       );
     });
-    await this.api.onMt5Heartbeat((payload) => {
-      const accountId = payload['accountId'] as string | undefined;
-      const balance = payload['balance'] as number | undefined;
-      const equity = payload['equity'] as number | undefined;
-      if (accountId) {
-        this.accounts.update((accounts) =>
-          accounts.map((account) =>
-            account.id === accountId
-              ? {
-                  ...account,
-                  balance: balance ?? account.balance,
-                  equity: equity ?? account.equity,
-                  lastHeartbeatAt: new Date().toISOString(),
-                }
-              : account,
-          ),
-        );
-      }
+    await this.api.onNt8Status((status) => {
       this.settings.update((current) =>
-        current && current.mt5
-          ? {
-              ...current,
-              mt5: {
-                ...current.mt5,
-                connected: true,
-                lastHeartbeatAt: new Date().toISOString(),
-              },
-            }
-          : current,
+        current ? { ...current, nt8: status } : current,
       );
     });
+    await this.api.onMt5Heartbeat((payload) => this.applyHeartbeat(payload, 'mt5'));
+    await this.api.onNt8Heartbeat((payload) => this.applyHeartbeat(payload, 'nt8'));
     await this.api.onAccountsUpdated(() => {
       void this.refreshAccounts();
       void this.refreshSettings();
@@ -129,10 +155,13 @@ export class Store {
     });
     await this.api.onSeriesUpdated((event: SeriesUpdatedEvent) => {
       this.seriesVersion.update((value) => value + 1);
-      this.lastMt5Event.set(`Velas ${event.timeframe} recibidas para ${event.symbol}`);
+      this.lastBridgeEvent.set(`Velas ${event.timeframe} recibidas para ${event.symbol}`);
     });
     await this.api.onMt5Event((event) => {
-      this.lastMt5Event.set(event.message);
+      this.lastBridgeEvent.set(event.message);
+    });
+    await this.api.onNt8Event((event) => {
+      this.lastBridgeEvent.set(event.message);
     });
   }
 

@@ -12,7 +12,7 @@ use crate::util::{new_id, now_iso};
 
 pub async fn load_account(pool: &SqlitePool, id: &str) -> AppResult<crate::models::Account> {
     sqlx::query_as::<_, crate::models::Account>(
-        "SELECT id, login, server, display_name, company, currency, leverage, status,
+        "SELECT id, login, server, provider, display_name, company, currency, leverage, status,
                 broker_utc_offset_seconds, balance, equity, last_heartbeat_at, created_at, updated_at
          FROM accounts WHERE id = ?",
     )

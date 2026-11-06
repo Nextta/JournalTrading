@@ -92,6 +92,28 @@
   }
 }
 
+.nt8-config {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  > span {
+    color: var(--muted-2);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  code {
+    overflow-wrap: anywhere;
+    color: var(--muted);
+    font-family: 'Cascadia Code', Consolas, monospace;
+    font-size: 10.5px;
+    line-height: 1.5;
+  }
+}
+
 .button-row {
   display: flex;
   gap: 8px;
@@ -136,6 +158,16 @@
 .instructions {
   margin-top: 16px;
   overflow: hidden;
+
+  h3 {
+    margin: 8px 0 2px;
+    color: var(--text);
+    font-size: 13px;
+
+    &:first-child {
+      margin-top: 0;
+    }
+  }
 
   ol {
     margin: 0;

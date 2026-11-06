@@ -19,6 +19,9 @@ use crate::util::{broker_date_from_string, broker_time_pair, new_id, now_iso};
 
 type ApiError = (StatusCode, Json<Value>);
 
+const PROVIDER_MT5: &str = "mt5";
+const PROVIDER_NT8: &str = "ninjatrader";
+
 fn api_error(status: StatusCode, message: impl Into<String>) -> ApiError {
     (
         status,
@@ -27,8 +30,38 @@ fn api_error(status: StatusCode, message: impl Into<String>) -> ApiError {
 }
 
 fn internal(error: impl std::fmt::Display) -> ApiError {
-    log::error!("Error en el puente MT5: {error}");
+    log::error!("Error en el puente de datos: {error}");
     api_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+}
+
+fn provider_key(provider: &str) -> &'static str {
+    if provider == PROVIDER_NT8 {
+        "nt8"
+    } else {
+        "mt5"
+    }
+}
+
+fn provider_label(provider: &str) -> &'static str {
+    if provider == PROVIDER_NT8 {
+        "NinjaTrader 8"
+    } else {
+        "MetaTrader 5"
+    }
+}
+
+fn normalize_server(provider: &str, server: &str) -> String {
+    let server = server.trim();
+    if provider != PROVIDER_NT8 {
+        return server.to_string();
+    }
+    if server.is_empty() {
+        return "NinjaTrader 8".to_string();
+    }
+    if server.starts_with("NinjaTrader 8") {
+        return server.to_string();
+    }
+    format!("NinjaTrader 8 · {server}")
 }
 
 pub fn router(state: AppState) -> Router {
@@ -39,6 +72,11 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/mt5/series", post(series))
         .route("/api/v1/mt5/events", post(events))
         .route("/api/v1/mt5/commands/result", post(command_result))
+        .route("/api/v1/nt8/heartbeat", post(nt8_heartbeat))
+        .route("/api/v1/nt8/sync", post(nt8_sync))
+        .route("/api/v1/nt8/series", post(nt8_series))
+        .route("/api/v1/nt8/events", post(nt8_events))
+        .route("/api/v1/nt8/commands/result", post(command_result))
         .layer(DefaultBodyLimit::max(64 * 1024 * 1024))
         .with_state(state)
 }
@@ -58,7 +96,7 @@ async fn authorize(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError
     if expected.is_empty() || provided != expected {
         return Err(api_error(
             StatusCode::UNAUTHORIZED,
-            "API key inválida. Revisa la configuración del EA.",
+            "API key inválida. Revisa la configuración del puente.",
         ));
     }
     Ok(())
@@ -69,6 +107,7 @@ async fn health() -> Json<Value> {
         "ok": true,
         "app": "JournalTrading",
         "version": env!("CARGO_PKG_VERSION"),
+        "providers": [PROVIDER_MT5, PROVIDER_NT8],
         "time": now_iso(),
     }))
 }
@@ -121,6 +160,11 @@ struct SyncPayload {
     positions: Vec<PositionPayload>,
     #[serde(default)]
     deals: Vec<DealPayload>,
+    /// Solo NT8: el payload contiene todas las ejecuciones desde esta fecha UTC.
+    /// Los deals guardados a partir de ella que no vengan en el payload se eliminan,
+    /// igual que las operaciones que se queden sin deals.
+    #[serde(default)]
+    history_from_utc: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -338,8 +382,10 @@ fn date_of(value: &str) -> Option<String> {
 // Account and status helpers
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 async fn ensure_account(
     pool: &SqlitePool,
+    provider: &str,
     login: i64,
     server: &str,
     display_name: Option<&str>,
@@ -350,18 +396,18 @@ async fn ensure_account(
     if login <= 0 {
         return Err(AppError::Validation("Login inválido".into()));
     }
-    let server = server.trim();
+    let server = normalize_server(provider, server);
     if server.is_empty() {
         return Err(AppError::Validation("Servidor vacío".into()));
     }
 
     if let Some(account) = sqlx::query_as::<_, Account>(
-        "SELECT id, login, server, display_name, company, currency, leverage, status,
+        "SELECT id, login, server, provider, display_name, company, currency, leverage, status,
                 broker_utc_offset_seconds, balance, equity, last_heartbeat_at, created_at, updated_at
          FROM accounts WHERE login = ? AND server = ?",
     )
     .bind(login)
-    .bind(server)
+    .bind(&server)
     .fetch_optional(pool)
     .await?
     {
@@ -408,7 +454,11 @@ async fn ensure_account(
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
         .unwrap_or_else(|| format!("Cuenta {login}"));
-    let company = company.unwrap_or("").trim().to_string();
+    let company = company
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| provider_label(provider).to_string());
     let currency = currency
         .map(str::trim)
         .filter(|value| value.len() == 3)
@@ -417,13 +467,14 @@ async fn ensure_account(
 
     sqlx::query(
         "INSERT INTO accounts
-         (id, login, server, display_name, company, currency, leverage, status,
+         (id, login, server, provider, display_name, company, currency, leverage, status,
           broker_utc_offset_seconds, balance, equity, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0, 0, 0, ?, ?)",
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 0, 0, ?, ?)",
     )
     .bind(&id)
     .bind(login)
-    .bind(server)
+    .bind(&server)
+    .bind(provider)
     .bind(&display_name)
     .bind(&company)
     .bind(&currency)
@@ -438,12 +489,17 @@ async fn ensure_account(
 
 async fn mark_connected(
     state: &AppState,
+    provider: &str,
     account: &Account,
     ea_version: Option<&str>,
     terminal_build: Option<i64>,
     terminal_data_path: Option<&str>,
 ) {
-    let mut status = state.mt5.status.write().await;
+    let mut status = if provider == PROVIDER_NT8 {
+        state.bridge.nt8.write().await
+    } else {
+        state.bridge.mt5.write().await
+    };
     status.running = true;
     status.connected = true;
     status.error = None;
@@ -461,7 +517,9 @@ async fn mark_connected(
     }
     let snapshot = status.clone();
     drop(status);
-    let _ = state.app.emit("mt5://status", snapshot);
+    let _ = state
+        .app
+        .emit(&format!("{}://status", provider_key(provider)), snapshot);
 }
 
 async fn touch_sync(pool: &SqlitePool, account_id: &str, offset_seconds: i64) -> AppResult<()> {
@@ -525,9 +583,27 @@ async fn heartbeat(
     headers: HeaderMap,
     Json(payload): Json<HeartbeatPayload>,
 ) -> Result<Json<Value>, ApiError> {
+    heartbeat_for(state, headers, payload, PROVIDER_MT5).await
+}
+
+async fn nt8_heartbeat(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<HeartbeatPayload>,
+) -> Result<Json<Value>, ApiError> {
+    heartbeat_for(state, headers, payload, PROVIDER_NT8).await
+}
+
+async fn heartbeat_for(
+    state: AppState,
+    headers: HeaderMap,
+    payload: HeartbeatPayload,
+    provider: &'static str,
+) -> Result<Json<Value>, ApiError> {
     authorize(&state, &headers).await?;
     let (account, is_new) = ensure_account(
         &state.db,
+        provider,
         payload.login,
         &payload.server,
         payload.display_name.as_deref(),
@@ -563,6 +639,7 @@ async fn heartbeat(
 
     mark_connected(
         &state,
+        provider,
         &account,
         payload.ea_version.as_deref(),
         payload.terminal_build,
@@ -579,11 +656,12 @@ async fn heartbeat(
             .emit("accounts://updated", json!({ "accountId": account.id }));
     }
     let _ = state.app.emit(
-        "mt5://heartbeat",
+        &format!("{}://heartbeat", provider_key(provider)),
         json!({
             "accountId": account.id,
             "login": account.login,
             "server": account.server,
+            "provider": provider,
             "serverTime": payload.server_time,
             "offset": offset,
             "balance": payload.balance,
@@ -594,6 +672,7 @@ async fn heartbeat(
     Ok(Json(json!({
         "ok": true,
         "apiVersion": 1,
+        "provider": provider,
         "accountId": account.id,
         "accountStatus": account.status,
         "pendingConfirmation": account.status == "pending",
@@ -609,9 +688,27 @@ async fn sync(
     headers: HeaderMap,
     Json(payload): Json<SyncPayload>,
 ) -> Result<Json<Value>, ApiError> {
+    sync_for(state, headers, payload, PROVIDER_MT5).await
+}
+
+async fn nt8_sync(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<SyncPayload>,
+) -> Result<Json<Value>, ApiError> {
+    sync_for(state, headers, payload, PROVIDER_NT8).await
+}
+
+async fn sync_for(
+    state: AppState,
+    headers: HeaderMap,
+    payload: SyncPayload,
+    provider: &'static str,
+) -> Result<Json<Value>, ApiError> {
     authorize(&state, &headers).await?;
     let (account, is_new) = ensure_account(
         &state.db,
+        provider,
         payload.login,
         &payload.server,
         None,
@@ -627,11 +724,18 @@ async fn sync(
     touch_sync(&state.db, &account.id, offset)
         .await
         .map_err(internal)?;
-    mark_connected(&state, &account, None, None, None).await;
+    mark_connected(&state, provider, &account, None, None, None).await;
 
     let stats = ingest_sync(&state.db, &account.id, offset, &payload)
         .await
         .map_err(internal)?;
+    if provider == PROVIDER_NT8
+        && let Some(from_utc) = payload.history_from_utc.as_deref().and_then(parse_utc)
+    {
+        reconcile_history(&state.db, &account.id, &from_utc, &payload)
+            .await
+            .map_err(internal)?;
+    }
 
     let _ = state.app.emit(
         "trades://updated",
@@ -653,6 +757,7 @@ async fn sync(
 
     Ok(Json(json!({
         "ok": true,
+        "provider": provider,
         "accountId": account.id,
         "accountStatus": account.status,
         "positions": stats.positions,
@@ -667,9 +772,27 @@ async fn series(
     headers: HeaderMap,
     Json(payload): Json<SeriesPayload>,
 ) -> Result<Json<Value>, ApiError> {
+    series_for(state, headers, payload, PROVIDER_MT5).await
+}
+
+async fn nt8_series(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<SeriesPayload>,
+) -> Result<Json<Value>, ApiError> {
+    series_for(state, headers, payload, PROVIDER_NT8).await
+}
+
+async fn series_for(
+    state: AppState,
+    headers: HeaderMap,
+    payload: SeriesPayload,
+    provider: &'static str,
+) -> Result<Json<Value>, ApiError> {
     authorize(&state, &headers).await?;
     let (account, _) = ensure_account(
         &state.db,
+        provider,
         payload.login,
         &payload.server,
         None,
@@ -751,13 +874,30 @@ async fn events(
     headers: HeaderMap,
     Json(payload): Json<EventPayload>,
 ) -> Result<Json<Value>, ApiError> {
+    events_for(state, headers, payload, PROVIDER_MT5).await
+}
+
+async fn nt8_events(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<EventPayload>,
+) -> Result<Json<Value>, ApiError> {
+    events_for(state, headers, payload, PROVIDER_NT8).await
+}
+
+async fn events_for(
+    state: AppState,
+    headers: HeaderMap,
+    payload: EventPayload,
+    provider: &'static str,
+) -> Result<Json<Value>, ApiError> {
     authorize(&state, &headers).await?;
     let mut account_id: Option<String> = None;
     if let (Some(login), Some(server)) = (payload.login, payload.server.as_deref())
         && login > 0
         && !server.trim().is_empty()
         && let Ok((account, _)) =
-            ensure_account(&state.db, login, server, None, None, None, None).await
+            ensure_account(&state.db, provider, login, server, None, None, None, None).await
     {
         account_id = Some(account.id);
     }
@@ -780,12 +920,13 @@ async fn events(
     .map_err(internal)?;
 
     let _ = state.app.emit(
-        "mt5://event",
+        &format!("{}://event", provider_key(provider)),
         json!({
             "level": level,
             "kind": kind,
             "message": payload.message,
             "accountId": account_id,
+            "provider": provider,
             "receivedAt": now,
         }),
     );
@@ -908,6 +1049,78 @@ async fn ingest_sync(
 
     stats.new_trades = created_trades.len() as i64;
     Ok(stats)
+}
+
+/// Elimina deals guardados desde `from_utc` que ya no existen en el puente (por
+/// ejemplo, ejecuciones agrupadas con un ticket antiguo) y recalcula o borra las
+/// operaciones afectadas.
+async fn reconcile_history(
+    pool: &SqlitePool,
+    account_id: &str,
+    from_utc: &str,
+    payload: &SyncPayload,
+) -> AppResult<u64> {
+    let sent: HashSet<i64> = payload.deals.iter().map(|deal| deal.deal_ticket).collect();
+    let open_tickets: HashSet<i64> = payload.positions.iter().map(|p| p.ticket).collect();
+
+    let rows = sqlx::query(
+        "SELECT id, trade_id, deal_ticket FROM deals WHERE account_id = ? AND time_utc >= ?",
+    )
+    .bind(account_id)
+    .bind(from_utc)
+    .fetch_all(pool)
+    .await?;
+
+    let mut removed = 0u64;
+    let mut touched: HashSet<String> = HashSet::new();
+    for row in rows {
+        let ticket: i64 = row.get("deal_ticket");
+        if sent.contains(&ticket) {
+            continue;
+        }
+        let id: String = row.get("id");
+        touched.insert(row.get("trade_id"));
+        sqlx::query("DELETE FROM deals WHERE id = ?")
+            .bind(&id)
+            .execute(pool)
+            .await?;
+        removed += 1;
+    }
+
+    // Operaciones sin deals (p. ej. agrupaciones antiguas) que no son posiciones abiertas.
+    let orphans = sqlx::query(
+        "SELECT t.id, t.position_ticket FROM trades t
+         WHERE t.account_id = ?
+           AND NOT EXISTS (SELECT 1 FROM deals d WHERE d.trade_id = t.id)",
+    )
+    .bind(account_id)
+    .fetch_all(pool)
+    .await?;
+    for row in orphans {
+        let ticket: i64 = row.get("position_ticket");
+        let id: String = row.get("id");
+        touched.remove(&id);
+        if open_tickets.contains(&ticket) {
+            continue;
+        }
+        sqlx::query("DELETE FROM trades WHERE id = ?")
+            .bind(&id)
+            .execute(pool)
+            .await?;
+    }
+
+    for trade_id in touched {
+        let ticket: Option<i64> = sqlx::query("SELECT position_ticket FROM trades WHERE id = ?")
+            .bind(&trade_id)
+            .fetch_optional(pool)
+            .await?
+            .map(|row| row.get("position_ticket"));
+        if let Some(ticket) = ticket {
+            rebuild_trade_from_deals(pool, &trade_id, open_tickets.contains(&ticket)).await?;
+        }
+    }
+
+    Ok(removed)
 }
 
 async fn find_trade_id(
@@ -1104,7 +1317,10 @@ async fn rebuild_trade_from_deals(
         }
     }
 
+    let is_open = is_open || close_volume + 1e-9 < open_volume;
+
     let open_volume_existing: f64 = trade.get("volume_initial");
+    let volume_current_existing: f64 = trade.get("volume_current");
     let open_price_existing: f64 = trade.get("open_price");
     let sl: Option<f64> = trade.get("sl");
     let account_id: String = trade.get("account_id");
@@ -1121,6 +1337,15 @@ async fn rebuild_trade_from_deals(
         open_value / open_volume
     } else {
         open_price_existing
+    };
+    let volume_current = if is_open {
+        if volume_current_existing > 0.0 {
+            volume_current_existing
+        } else {
+            (open_volume - close_volume).max(0.0)
+        }
+    } else {
+        0.0
     };
     let close_price = if close_volume > 0.0 {
         Some(close_value / close_volume)
@@ -1200,11 +1425,7 @@ async fn rebuild_trade_from_deals(
     )
     .bind(&side)
     .bind(volume_initial)
-    .bind(if is_open {
-        trade.get::<f64, _>("volume_current")
-    } else {
-        0.0
-    })
+    .bind(volume_current)
     .bind(&open_time_server)
     .bind(&open_time_utc)
     .bind(close_time_server.as_deref())
@@ -1277,7 +1498,7 @@ async fn upsert_position(
     let now = now_iso();
 
     if let Some(row) = sqlx::query(
-        "SELECT id, state, risk_amount FROM trades WHERE account_id = ? AND position_ticket = ?",
+        "SELECT id, state, risk_amount, volume_initial FROM trades WHERE account_id = ? AND position_ticket = ?",
     )
     .bind(account_id)
     .bind(position.ticket)
@@ -1289,6 +1510,7 @@ async fn upsert_position(
         if state == "closed" {
             return Ok(false);
         }
+        let existing_initial: f64 = row.get("volume_initial");
         let existing_risk: Option<f64> =
             row.try_get::<Option<f64>, _>("risk_amount").ok().flatten();
         let risk_amount = existing_risk.or(risk);
@@ -1305,7 +1527,7 @@ async fn upsert_position(
         )
         .bind(symbol)
         .bind(side)
-        .bind(position.volume)
+        .bind(existing_initial.max(position.volume))
         .bind(position.volume)
         .bind(&time_server)
         .bind(&time_utc)
@@ -1473,4 +1695,277 @@ async fn link_trade_day(
 fn _assert_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<AppState>();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn test_pool() -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("pool");
+        sqlx::migrate!("./migrations")
+            .run(&pool)
+            .await
+            .expect("migrations");
+        pool
+    }
+
+    #[tokio::test]
+    async fn creates_ninjatrader_account_with_normalized_server() {
+        let pool = test_pool().await;
+        let (account, is_new) = ensure_account(
+            &pool,
+            PROVIDER_NT8,
+            1001,
+            "Simulator",
+            Some("NT8 Simulator"),
+            Some("NinjaTrader 8 · Simulator"),
+            Some("USD"),
+            None,
+        )
+        .await
+        .expect("account");
+
+        assert!(is_new);
+        assert_eq!(account.provider, PROVIDER_NT8);
+        assert_eq!(account.server, "NinjaTrader 8 · Simulator");
+        assert_eq!(account.display_name, "NT8 Simulator");
+
+        let (same, is_new) = ensure_account(
+            &pool,
+            PROVIDER_NT8,
+            1001,
+            "NinjaTrader 8 · Simulator",
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("account");
+        assert!(!is_new);
+        assert_eq!(same.id, account.id);
+    }
+
+    #[tokio::test]
+    async fn ingests_ninjatrader_deals_and_infers_open_state() {
+        let pool = test_pool().await;
+        let (account, _) = ensure_account(
+            &pool,
+            PROVIDER_NT8,
+            1001,
+            "Simulator",
+            Some("NT8 Simulator"),
+            None,
+            Some("USD"),
+            None,
+        )
+        .await
+        .expect("account");
+
+        let payload = SyncPayload {
+            login: 1001,
+            server: "Simulator".to_string(),
+            broker_utc_offset_seconds: Some(0),
+            symbols: vec![SymbolPayload {
+                symbol: "ES 12-25".to_string(),
+                description: "E-mini S&P 500".to_string(),
+                digits: 2,
+                tick_size: 0.25,
+                tick_value: 12.5,
+                contract_size: 1.0,
+                currency_profit: "USD".to_string(),
+            }],
+            positions: vec![],
+            deals: vec![
+                DealPayload {
+                    deal_ticket: 1,
+                    position_ticket: 700001,
+                    symbol: "ES 12-25".to_string(),
+                    kind: 0,
+                    entry: 0,
+                    volume: 1.0,
+                    price: 4500.0,
+                    profit: 0.0,
+                    commission: -2.5,
+                    swap: 0.0,
+                    magic: Some(0),
+                    comment: Some("Entry".to_string()),
+                    reason: -1,
+                    time_server: "2026-11-02T10:00:00".to_string(),
+                    time: None,
+                    time_utc: Some("2026-11-02T10:00:00Z".to_string()),
+                },
+                DealPayload {
+                    deal_ticket: 2,
+                    position_ticket: 700001,
+                    symbol: "ES 12-25".to_string(),
+                    kind: 1,
+                    entry: 1,
+                    volume: 1.0,
+                    price: 4502.0,
+                    profit: 100.0,
+                    commission: -2.5,
+                    swap: 0.0,
+                    magic: Some(0),
+                    comment: Some("Profit target".to_string()),
+                    reason: 5,
+                    time_server: "2026-11-02T11:00:00".to_string(),
+                    time: None,
+                    time_utc: Some("2026-11-02T11:00:00Z".to_string()),
+                },
+                DealPayload {
+                    deal_ticket: 3,
+                    position_ticket: 700002,
+                    symbol: "ES 12-25".to_string(),
+                    kind: 0,
+                    entry: 0,
+                    volume: 1.0,
+                    price: 4510.0,
+                    profit: 0.0,
+                    commission: -2.5,
+                    swap: 0.0,
+                    magic: Some(0),
+                    comment: Some("Entry".to_string()),
+                    reason: -1,
+                    time_server: "2026-11-03T10:00:00".to_string(),
+                    time: None,
+                    time_utc: Some("2026-11-03T10:00:00Z".to_string()),
+                },
+            ],
+            history_from_utc: None,
+        };
+
+        let stats = ingest_sync(&pool, &account.id, 0, &payload)
+            .await
+            .expect("ingest");
+        assert_eq!(stats.deals, 3);
+
+        let closed = sqlx::query(
+            "SELECT state, profit_net, close_price FROM trades WHERE position_ticket = 700001",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("closed trade");
+        assert_eq!(closed.get::<String, _>("state"), "closed");
+        assert!((closed.get::<f64, _>("profit_net") - 95.0).abs() < 0.001);
+        assert!((closed.get::<f64, _>("close_price") - 4502.0).abs() < 0.001);
+
+        let open = sqlx::query(
+            "SELECT state, volume_current, volume_initial FROM trades WHERE position_ticket = 700002",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("open trade");
+        assert_eq!(open.get::<String, _>("state"), "open");
+        assert!((open.get::<f64, _>("volume_current") - 1.0).abs() < 0.001);
+        assert!((open.get::<f64, _>("volume_initial") - 1.0).abs() < 0.001);
+    }
+
+    fn nt8_deal(
+        deal_ticket: i64,
+        position_ticket: i64,
+        kind: i32,
+        entry: i64,
+        price: f64,
+        profit: f64,
+        time: &str,
+    ) -> DealPayload {
+        DealPayload {
+            deal_ticket,
+            position_ticket,
+            symbol: "NQ 12-26".to_string(),
+            kind,
+            entry,
+            volume: 2.0,
+            price,
+            profit,
+            commission: 0.0,
+            swap: 0.0,
+            magic: Some(0),
+            comment: None,
+            reason: -1,
+            time_server: time.to_string(),
+            time: None,
+            time_utc: Some(format!("{time}Z")),
+        }
+    }
+
+    #[tokio::test]
+    async fn reconciles_ninjatrader_history_and_drops_stale_groupings() {
+        let pool = test_pool().await;
+        let (account, _) = ensure_account(
+            &pool,
+            PROVIDER_NT8,
+            3,
+            "Apex",
+            None,
+            None,
+            Some("USD"),
+            None,
+        )
+        .await
+        .expect("account");
+
+        // Agrupación antigua: dos entradas en la misma operación, sin salidas.
+        let stale = SyncPayload {
+            login: 3,
+            server: "Apex".to_string(),
+            broker_utc_offset_seconds: Some(0),
+            symbols: vec![],
+            positions: vec![],
+            deals: vec![
+                nt8_deal(2, 999, 0, 0, 27331.75, 0.0, "2026-11-06T14:00:00"),
+                nt8_deal(4, 999, 0, 0, 27339.5, 0.0, "2026-11-06T14:10:00"),
+            ],
+            history_from_utc: None,
+        };
+        ingest_sync(&pool, &account.id, 0, &stale)
+            .await
+            .expect("stale");
+
+        let fixed = SyncPayload {
+            login: 3,
+            server: "Apex".to_string(),
+            broker_utc_offset_seconds: Some(0),
+            symbols: vec![],
+            positions: vec![],
+            deals: vec![
+                nt8_deal(101, 501, 0, 0, 27331.75, 0.0, "2026-11-06T14:00:00"),
+                nt8_deal(102, 501, 1, 1, 27334.5, 110.0, "2026-11-06T14:05:00"),
+                nt8_deal(103, 502, 0, 0, 27339.5, 0.0, "2026-11-06T14:10:00"),
+                nt8_deal(104, 502, 1, 1, 27344.0, 180.0, "2026-11-06T14:15:00"),
+            ],
+            history_from_utc: Some("2000-01-01T00:00:00Z".to_string()),
+        };
+        ingest_sync(&pool, &account.id, 0, &fixed)
+            .await
+            .expect("fixed");
+        reconcile_history(&pool, &account.id, "2000-01-01T00:00:00Z", &fixed)
+            .await
+            .expect("reconcile");
+
+        let trades = sqlx::query(
+            "SELECT position_ticket, state, profit_net FROM trades ORDER BY position_ticket",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("trades");
+        assert_eq!(trades.len(), 2);
+        assert_eq!(trades[0].get::<i64, _>("position_ticket"), 501);
+        assert_eq!(trades[0].get::<String, _>("state"), "closed");
+        assert!((trades[1].get::<f64, _>("profit_net") - 180.0).abs() < 0.001);
+
+        let deals: i64 = sqlx::query("SELECT COUNT(*) AS n FROM deals")
+            .fetch_one(&pool)
+            .await
+            .expect("deals")
+            .get("n");
+        assert_eq!(deals, 4);
+    }
 }

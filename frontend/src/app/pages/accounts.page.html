@@ -4,7 +4,7 @@
       <div class="eyebrow">Conexiones</div>
       <h1>Cuentas</h1>
       <p class="text-sm muted">
-        Gestiona las cuentas de MetaTrader 5 y el puente local con el Expert Advisor.
+        Gestiona las cuentas de MetaTrader 5 y NinjaTrader 8, y el estado de los puentes locales.
       </p>
     </div>
     <div class="head-actions">
@@ -20,9 +20,9 @@
   </header>
 
   @if (store.mt5(); as mt5) {
-    <section class="card mt5-card" [class.online]="store.mt5Connected()">
-      <div class="mt5-head">
-        <div class="mt5-title">
+    <section class="card bridge-card" [class.online]="store.mt5Connected()">
+      <div class="bridge-head">
+        <div class="bridge-title">
           <span class="status-dot" [class.online]="store.mt5Connected()"></span>
           <div>
             <h2>MetaTrader 5</h2>
@@ -37,7 +37,7 @@
             </p>
           </div>
         </div>
-        <div class="mt5-actions">
+        <div class="bridge-actions">
           <button mat-stroked-button [disabled]="restarting()" (click)="restartServer()">
             <mat-icon>restart_alt</mat-icon>
             {{ restarting() ? 'Reiniciando…' : 'Reiniciar servidor' }}
@@ -49,7 +49,7 @@
         </div>
       </div>
 
-      <div class="mt5-grid">
+      <div class="bridge-grid">
         <div>
           <span>Puerto local</span>
           <strong>{{ mt5.port }}</strong>
@@ -78,6 +78,65 @@
     </section>
   }
 
+  @if (store.nt8(); as nt8) {
+    <section class="card bridge-card nt8-card" [class.online]="store.nt8Connected()">
+      <div class="bridge-head">
+        <div class="bridge-title">
+          <span class="status-dot" [class.online]="store.nt8Connected()"></span>
+          <div>
+            <h2>NinjaTrader 8</h2>
+            <p>
+              @if (store.nt8Connected()) {
+                Conectado · heartbeat {{ timeAgo(nt8.lastHeartbeatAt) }}
+              } @else if (nt8.running) {
+                Servidor activo, esperando al AddOn en el puerto {{ nt8.port }}
+              } @else {
+                Servidor detenido{{ nt8.error ? ': ' + nt8.error : '' }}
+              }
+            </p>
+          </div>
+        </div>
+        <div class="bridge-actions">
+          <button mat-stroked-button [disabled]="restarting()" (click)="restartServer()">
+            <mat-icon>restart_alt</mat-icon>
+            {{ restarting() ? 'Reiniciando…' : 'Reiniciar servidor' }}
+          </button>
+          <a mat-button routerLink="/ajustes">
+            <mat-icon>settings</mat-icon>
+            Configurar
+          </a>
+        </div>
+      </div>
+
+      <div class="bridge-grid">
+        <div>
+          <span>Puerto local</span>
+          <strong>{{ nt8.port }}</strong>
+        </div>
+        <div>
+          <span>AddOn</span>
+          <strong>{{ nt8.eaVersion || '—' }}</strong>
+        </div>
+        <div>
+          <span>Build NT8</span>
+          <strong>{{ nt8.terminalBuild || '—' }}</strong>
+        </div>
+        <div>
+          <span>Cuenta NT8</span>
+          <strong>{{ nt8.login || '—' }}</strong>
+        </div>
+        <div>
+          <span>Conexión NT8</span>
+          <strong>{{ nt8.server || '—' }}</strong>
+        </div>
+        <div>
+          <span>Último heartbeat</span>
+          <strong>{{ formatDateTime(nt8.lastHeartbeatAt) }}</strong>
+        </div>
+      </div>
+    </section>
+  }
+
   @if (store.pendingAccounts().length) {
     <section class="pending-section">
       <div class="section-head">
@@ -96,9 +155,12 @@
                 <p>{{ account.login }} · {{ account.server }}</p>
               </div>
               <span class="pill pending">Pendiente</span>
+              <span class="pill provider-pill" [class.nt8]="account.provider === 'ninjatrader'">
+                {{ account.provider === 'ninjatrader' ? 'NT8' : 'MT5' }}
+              </span>
             </div>
             <p class="pending-note">
-              El EA ha detectado esta cuenta. Confírmala para empezar a guardar su historial y
+              El puente ha detectado esta cuenta. Confírmala para empezar a guardar su historial y
               diario.
             </p>
             <div class="account-actions">
@@ -137,6 +199,9 @@
               @if (account.id === store.activeAccount()?.id) {
                 <span class="pill accent-pill">Activa</span>
               }
+              <span class="pill provider-pill" [class.nt8]="account.provider === 'ninjatrader'">
+                {{ account.provider === 'ninjatrader' ? 'NT8' : 'MT5' }}
+              </span>
             </div>
 
             <div class="balance-row">
@@ -176,8 +241,8 @@
         <span class="material-symbols-outlined">account_balance_wallet</span>
         <h3>Sin cuentas activas</h3>
         <p>
-          Añade una cuenta manualmente o conecta el EA en MetaTrader 5 para detectarla
-          automáticamente.
+          Añade una cuenta manualmente o conecta el EA de MetaTrader 5 o el AddOn de NinjaTrader 8
+          para detectarla automáticamente.
         </p>
         <button mat-flat-button color="primary" (click)="create()">
           <mat-icon>add</mat-icon>
@@ -205,6 +270,9 @@
                 <p>{{ account.login }} · {{ account.server }}</p>
               </div>
               <span class="pill">Archivada</span>
+              <span class="pill provider-pill" [class.nt8]="account.provider === 'ninjatrader'">
+                {{ account.provider === 'ninjatrader' ? 'NT8' : 'MT5' }}
+              </span>
             </div>
           </article>
         }

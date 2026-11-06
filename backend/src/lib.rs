@@ -87,7 +87,11 @@ pub fn run() {
             commands::update_settings,
             commands::regenerate_api_key,
             commands::get_mt5_status,
+            commands::get_nt8_status,
             commands::restart_mt5_server,
+            commands::restart_bridge_server,
+            commands::write_nt8_config,
+            commands::open_nt8_folder,
             commands::open_data_dir,
             commands::create_backup,
         ])
