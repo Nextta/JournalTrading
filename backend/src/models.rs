@@ -8,6 +8,7 @@ pub struct Account {
     pub id: String,
     pub login: i64,
     pub server: String,
+    pub provider: String,
     pub display_name: String,
     pub company: String,
     pub currency: String,
@@ -46,7 +47,9 @@ pub struct SettingsResponse {
     pub timezone_mode: String,
     pub data_dir: String,
     pub version: String,
-    pub mt5: Mt5Status,
+    pub mt5: BridgeStatus,
+    pub nt8: BridgeStatus,
+    pub nt8_config_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,7 +61,7 @@ pub struct SettingsUpdate {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-pub struct Mt5Status {
+pub struct BridgeStatus {
     pub running: bool,
     pub port: u16,
     pub error: Option<String>,

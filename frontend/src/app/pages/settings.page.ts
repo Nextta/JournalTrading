@@ -51,6 +51,7 @@ export class SettingsPage {
   protected readonly saving = signal(false);
   protected readonly regenerating = signal(false);
   protected readonly backingUp = signal(false);
+  protected readonly writingNt8 = signal(false);
   protected readonly showKey = signal(false);
   protected port = 4477;
   protected timezoneMode: 'broker' | 'local' = 'broker';
@@ -114,7 +115,7 @@ export class SettingsPage {
         data: {
           title: 'Regenerar API key',
           message:
-            'La clave actual dejará de funcionar inmediatamente. Tendrás que actualizarla en el Expert Advisor de MetaTrader 5.',
+            'La clave actual dejará de funcionar inmediatamente. Tendrás que actualizarla en el Expert Advisor de MetaTrader 5. Si ya generaste la configuración de NinjaTrader 8, se actualizará automáticamente.',
           confirmText: 'Regenerar clave',
           danger: true,
           icon: 'key',
@@ -153,6 +154,28 @@ export class SettingsPage {
   protected async openDataDir(): Promise<void> {
     try {
       await this.api.openDataDir();
+    } catch (error) {
+      this.notifications.error(error);
+    }
+  }
+
+  protected async configureNt8(): Promise<void> {
+    if (this.writingNt8()) return;
+    this.writingNt8.set(true);
+    try {
+      const path = await this.api.writeNt8Config();
+      await this.store.refreshSettings();
+      this.notifications.success(`Configuración NT8 escrita en ${path}`);
+    } catch (error) {
+      this.notifications.error(error);
+    } finally {
+      this.writingNt8.set(false);
+    }
+  }
+
+  protected async openNt8Folder(): Promise<void> {
+    try {
+      await this.api.openNt8Folder();
     } catch (error) {
       this.notifications.error(error);
     }

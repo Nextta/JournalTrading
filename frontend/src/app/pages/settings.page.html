@@ -25,7 +25,7 @@
             <mat-form-field appearance="outline" subscriptSizing="dynamic">
               <mat-label>Puerto HTTP</mat-label>
               <input matInput type="number" [(ngModel)]="port" min="1024" max="65535" />
-              <mat-hint>El EA enviará los datos a este puerto local.</mat-hint>
+              <mat-hint>El EA y el AddOn enviarán los datos a este puerto local.</mat-hint>
             </mat-form-field>
 
             <mat-form-field appearance="outline" subscriptSizing="dynamic">
@@ -58,12 +58,55 @@
 
       <section class="card settings-card">
         <div class="card-header">
+          <div class="card-title"><span class="material-symbols-outlined">extension</span>Puente NinjaTrader 8</div>
+          @if (settings.nt8.connected) {
+            <span class="pill accent-pill">AddOn conectado</span>
+          } @else {
+            <span class="pill">Sin conexión</span>
+          }
+        </div>
+        <div class="settings-body">
+          <p class="text-xs muted help">
+            El AddOn de NinjaTrader 8 envía cuentas, ejecuciones y velas al mismo puerto local.
+            Comparte la API key con la conexión de MT5.
+          </p>
+
+          <div class="endpoint">
+            <span>Endpoint para el AddOn</span>
+            <div class="endpoint-row">
+              <code>{{ endpoint() }}/nt8</code>
+              <button mat-icon-button matTooltip="Copiar endpoint" (click)="copy(endpoint() + '/nt8')">
+                <mat-icon>content_copy</mat-icon>
+              </button>
+            </div>
+          </div>
+
+          <div class="nt8-config">
+            <span>Archivo de configuración</span>
+            <code>{{ settings.nt8ConfigPath || 'No detectado' }}</code>
+          </div>
+
+          <div class="settings-actions">
+            <button mat-stroked-button (click)="openNt8Folder()">
+              <mat-icon>folder_open</mat-icon>
+              Abrir carpeta NT8
+            </button>
+            <button mat-flat-button color="primary" [disabled]="writingNt8()" (click)="configureNt8()">
+              <mat-icon>settings_suggest</mat-icon>
+              {{ writingNt8() ? 'Escribiendo…' : 'Escribir configuración NT8' }}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card settings-card">
+        <div class="card-header">
           <div class="card-title"><span class="material-symbols-outlined">key</span>Seguridad</div>
         </div>
         <div class="settings-body">
           <p class="text-xs muted help">
-            El EA debe enviar esta clave en la cabecera <code>X-Api-Key</code>. No la compartas
-            fuera de tu equipo.
+            El EA de MT5 y el AddOn de NT8 deben enviar esta clave en la cabecera
+            <code>X-Api-Key</code>. No la compartas fuera de tu equipo.
           </p>
 
           <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full">
@@ -129,9 +172,10 @@
           <dl class="about-list">
             <div><dt>Versión</dt><dd>{{ settings.version }}</dd></div>
             <div><dt>Puerto activo</dt><dd>{{ settings.apiPort }}</dd></div>
-            <div><dt>Servidor MT5</dt><dd>{{ settings.mt5.running ? 'Activo' : 'Detenido' }}</dd></div>
-            <div><dt>EA</dt><dd>{{ settings.mt5.eaVersion || '—' }}</dd></div>
-            <div><dt>Terminal build</dt><dd>{{ settings.mt5.terminalBuild || '—' }}</dd></div>
+            <div><dt>Servidor de puentes</dt><dd>{{ settings.mt5.running ? 'Activo' : 'Detenido' }}</dd></div>
+            <div><dt>EA MT5</dt><dd>{{ settings.mt5.eaVersion || '—' }}</dd></div>
+            <div><dt>AddOn NT8</dt><dd>{{ settings.nt8.eaVersion || '—' }}</dd></div>
+            <div><dt>Terminal MT5</dt><dd>{{ settings.mt5.terminalBuild || '—' }}</dd></div>
             <div><dt>Cuenta activa</dt><dd>{{ store.activeAccount()?.displayName || '—' }}</dd></div>
           </dl>
         </div>
@@ -140,9 +184,10 @@
 
     <section class="card instructions">
       <div class="card-header">
-        <div class="card-title"><span class="material-symbols-outlined">integration_instructions</span>Cómo conectar MetaTrader 5</div>
+        <div class="card-title"><span class="material-symbols-outlined">integration_instructions</span>Cómo conectar tus plataformas</div>
       </div>
       <div class="settings-body">
+        <h3>MetaTrader 5</h3>
         <ol>
           <li>Compila <code>TradingJournalBridge.mq5</code> en MetaEditor y adjúntalo a un gráfico.</li>
           <li>
@@ -152,6 +197,29 @@
           <li>Activa el trading algorítmico y deja el terminal abierto.</li>
           <li>El EA enviará un heartbeat cada 5 segundos y sincronizará el historial automáticamente.</li>
         </ol>
+
+        <h3>NinjaTrader 8</h3>
+        <ol>
+          <li>
+            Cierra NinjaTrader y ejecuta <code>tools\install-nt8-bridge.ps1</code>. También puedes
+            copiar <code>nt8\JournalTradingBridge.cs</code> a
+            <code>Documents\NinjaTrader 8\bin\Custom\AddOns</code> y compilar con el editor de
+            NinjaScript.
+          </li>
+          <li>
+            Pulsa <strong>Escribir configuración NT8</strong> para generar
+            <code>JournalTradingBridge.json</code> con la API key y el puerto actuales.
+          </li>
+          <li>Abre NinjaTrader 8. El AddOn se carga automáticamente y envía un heartbeat cada 5 segundos.</li>
+          <li>
+            La primera vez, la cuenta aparecerá pendiente en <strong>Cuentas</strong>. Actívala para
+            empezar a guardar su historial y diario.
+          </li>
+        </ol>
+        <p class="text-xs muted help">
+          El AddOn recupera las ejecuciones históricas de la base de datos local de NinjaTrader y
+          solicita las velas bajo demanda al abrir un gráfico. No envía órdenes.
+        </p>
       </div>
     </section>
   } @else {

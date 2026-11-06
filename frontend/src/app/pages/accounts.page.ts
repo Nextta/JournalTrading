@@ -9,6 +9,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../core/api.service';
@@ -29,7 +30,7 @@ import { AccountEditorDialogComponent } from './account-editor.dialog';
 
 @Component({
   selector: 'app-accounts-page',
-  imports: [MatButtonModule, MatIconModule, MatProgressBarModule, MatTooltipModule],
+  imports: [MatButtonModule, MatIconModule, MatProgressBarModule, MatTooltipModule, RouterLink],
   templateUrl: './accounts.page.html',
   styleUrl: './accounts.page.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -116,7 +117,7 @@ export class AccountsPage {
         data: {
           title: `Archivar ${account.displayName}`,
           message:
-            'La cuenta dejará de aparecer en el selector y no se actualizará desde MetaTrader 5. Sus datos históricos se conservan.',
+            'La cuenta dejará de aparecer en el selector y no se actualizará desde el puente. Sus datos históricos se conservan.',
           confirmText: 'Archivar cuenta',
           danger: true,
           icon: 'archive',
@@ -139,9 +140,9 @@ export class AccountsPage {
     if (this.restarting()) return;
     this.restarting.set(true);
     try {
-      await this.api.restartMt5Server();
+      await this.api.restartBridgeServer();
       await this.store.refreshSettings();
-      this.notifications.success('Servidor MT5 reiniciado');
+      this.notifications.success('Servidor de puentes reiniciado');
     } catch (error) {
       this.notifications.error(error);
     } finally {

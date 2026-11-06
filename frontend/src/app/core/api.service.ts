@@ -43,6 +43,7 @@ export interface Mt5Event {
   kind: string;
   message: string;
   accountId: string | null;
+  provider?: string;
   receivedAt: string;
 }
 
@@ -267,8 +268,24 @@ export class ApiService {
     return this.call('get_mt5_status');
   }
 
+  getNt8Status(): Promise<Mt5Status> {
+    return this.call('get_nt8_status');
+  }
+
   restartMt5Server(): Promise<Mt5Status> {
     return this.call('restart_mt5_server');
+  }
+
+  restartBridgeServer(): Promise<Mt5Status> {
+    return this.call('restart_bridge_server');
+  }
+
+  writeNt8Config(): Promise<string> {
+    return this.call('write_nt8_config');
+  }
+
+  openNt8Folder(): Promise<void> {
+    return this.call('open_nt8_folder');
   }
 
   openDataDir(): Promise<void> {
@@ -294,6 +311,14 @@ export class ApiService {
     return this.listenEvent('mt5://heartbeat', handler);
   }
 
+  onNt8Status(handler: (status: Mt5Status) => void): Promise<UnlistenFn> {
+    return this.listenEvent('nt8://status', handler);
+  }
+
+  onNt8Heartbeat(handler: (payload: Record<string, unknown>) => void): Promise<UnlistenFn> {
+    return this.listenEvent('nt8://heartbeat', handler);
+  }
+
   onAccountsUpdated(handler: (payload: { accountId: string }) => void): Promise<UnlistenFn> {
     return this.listenEvent('accounts://updated', handler);
   }
@@ -312,5 +337,9 @@ export class ApiService {
 
   onMt5Event(handler: (payload: Mt5Event) => void): Promise<UnlistenFn> {
     return this.listenEvent('mt5://event', handler);
+  }
+
+  onNt8Event(handler: (payload: Mt5Event) => void): Promise<UnlistenFn> {
+    return this.listenEvent('nt8://event', handler);
   }
 }

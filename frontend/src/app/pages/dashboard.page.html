@@ -7,8 +7,9 @@
       <span class="eyebrow">Primeros pasos</span>
       <h1>Empieza tu diario de trading</h1>
       <p>
-        Conecta tu cuenta de MetaTrader 5 con el puente local. El EA enviará tus operaciones, el
-        diario las organizará por día y activo, y podrás revisar tus estadísticas reales.
+        Conecta tu cuenta de MetaTrader 5 o NinjaTrader 8 con el puente local. El EA o el AddOn
+        enviarán tus operaciones, el diario las organizará por día y activo, y podrás revisar tus
+        estadísticas reales.
       </p>
       <div class="steps">
         <div class="step">
@@ -21,8 +22,8 @@
         <div class="step">
           <span>2</span>
           <div>
-            <strong>Instala el EA en MT5</strong>
-            <small>Abre una cuenta y deja el asesor en el gráfico.</small>
+            <strong>Instala el EA o el AddOn</strong>
+            <small>Abre una cuenta en MT5 o NT8 y deja el puente activo.</small>
           </div>
         </div>
         <div class="step">
@@ -96,11 +97,11 @@
           </div>
           <span
             class="pill"
-            [class.accent]="store.mt5Connected()"
-            [class.pending]="!store.mt5Connected()"
+            [class.accent]="store.activeAccountConnected()"
+            [class.pending]="!store.activeAccountConnected()"
           >
             <span class="badge-dot"></span>
-            {{ store.mt5Connected() ? 'Sincronizando' : 'Sin conexión' }}
+            {{ store.activeAccountConnected() ? 'Sincronizando' : 'Sin conexión' }}
           </span>
         </div>
 

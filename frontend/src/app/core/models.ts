@@ -1,7 +1,10 @@
+export type Provider = 'mt5' | 'ninjatrader';
+
 export interface Account {
   id: string;
   login: number;
   server: string;
+  provider: Provider | string;
   displayName: string;
   company: string;
   currency: string;
@@ -27,7 +30,7 @@ export interface AccountUpdate {
   currency: string;
 }
 
-export interface Mt5Status {
+export interface BridgeStatus {
   running: boolean;
   port: number;
   error: string | null;
@@ -42,6 +45,8 @@ export interface Mt5Status {
   terminalDataPath: string | null;
 }
 
+export type Mt5Status = BridgeStatus;
+
 export interface SettingsResponse {
   apiKey: string;
   apiPort: number;
@@ -49,7 +54,9 @@ export interface SettingsResponse {
   timezoneMode: 'broker' | 'local';
   dataDir: string;
   version: string;
-  mt5: Mt5Status;
+  mt5: BridgeStatus;
+  nt8: BridgeStatus;
+  nt8ConfigPath: string | null;
 }
 
 export interface SettingsUpdate {

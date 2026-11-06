@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 
 use base64::Engine;
 use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
@@ -17,6 +18,70 @@ use crate::state::AppState;
 use crate::stats;
 use crate::util::{new_id, now_iso, sanitize_html, validate_date};
 
+fn nt8_custom_dir() -> Option<PathBuf> {
+    let home = PathBuf::from(std::env::var_os("USERPROFILE")?);
+    let mut candidates = vec![
+        home.join("Documents")
+            .join("NinjaTrader 8")
+            .join("bin")
+            .join("Custom"),
+        home.join("OneDrive")
+            .join("Documents")
+            .join("NinjaTrader 8")
+            .join("bin")
+            .join("Custom"),
+    ];
+    if let Ok(entries) = std::fs::read_dir(&home) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            if name.to_string_lossy().starts_with("OneDrive") {
+                candidates.push(
+                    entry
+                        .path()
+                        .join("Documents")
+                        .join("NinjaTrader 8")
+                        .join("bin")
+                        .join("Custom"),
+                );
+            }
+        }
+    }
+    candidates.into_iter().find(|path| path.is_dir())
+}
+
+fn nt8_config_path() -> Option<PathBuf> {
+    nt8_custom_dir().map(|dir| dir.join("JournalTradingBridge.json"))
+}
+
+async fn write_nt8_config_file(state: &AppState, force: bool) -> AppResult<Option<String>> {
+    let Some(path) = nt8_config_path() else {
+        if force {
+            return Err(AppError::NotFound(
+                "No se encontró la carpeta Custom de NinjaTrader 8. Abre NinjaTrader una vez o instala el AddOn manualmente."
+                    .into(),
+            ));
+        }
+        return Ok(None);
+    };
+    if !force && !path.is_file() {
+        return Ok(None);
+    }
+    let api_port = db::get_api_port(&state.db).await?;
+    let api_key = state.current_api_key().await;
+    let config = serde_json::json!({
+        "apiUrl": format!("http://127.0.0.1:{api_port}"),
+        "apiKey": api_key,
+        "heartbeatSeconds": 5,
+        "syncSeconds": 15,
+        "historyDays": 0,
+        "verbose": true,
+    });
+    let contents = serde_json::to_string_pretty(&config)
+        .map_err(|error| AppError::Internal(error.to_string()))?;
+    tokio::fs::write(&path, contents).await?;
+    Ok(Some(path.to_string_lossy().to_string()))
+}
+
 async fn settings_response(state: &AppState) -> AppResult<SettingsResponse> {
     let api_key = state.current_api_key().await;
     let api_port = db::get_api_port(&state.db).await?;
@@ -32,6 +97,8 @@ async fn settings_response(state: &AppState) -> AppResult<SettingsResponse> {
         data_dir: state.data_dir.to_string_lossy().to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         mt5: state.status().await,
+        nt8: state.nt8_status().await,
+        nt8_config_path: nt8_config_path().map(|path| path.to_string_lossy().to_string()),
     })
 }
 
@@ -57,7 +124,7 @@ pub async fn get_bootstrap(state: State<'_, AppState>) -> AppResult<Bootstrap> {
 
 async fn load_accounts(pool: &SqlitePool) -> AppResult<Vec<Account>> {
     Ok(sqlx::query_as::<_, Account>(
-        "SELECT id, login, server, display_name, company, currency, leverage, status,
+        "SELECT id, login, server, provider, display_name, company, currency, leverage, status,
                 broker_utc_offset_seconds, balance, equity, last_heartbeat_at, created_at, updated_at
          FROM accounts
          ORDER BY CASE status WHEN 'active' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END, created_at",
@@ -1225,6 +1292,7 @@ pub async fn update_settings(
     let old_port = db::get_api_port(&state.db).await?;
     db::set_setting(&state.db, "api_port", &input.api_port.to_string()).await?;
     db::set_setting(&state.db, "timezone_mode", &input.timezone_mode).await?;
+    let _ = write_nt8_config_file(&state, false).await;
     if old_port != input.api_port {
         state.start_server(app).await?;
     }
@@ -1240,20 +1308,65 @@ pub async fn regenerate_api_key(state: State<'_, AppState>) -> AppResult<String>
     );
     db::set_setting(&state.db, "api_key", &key).await?;
     state.set_api_key(key.clone()).await;
+    let _ = write_nt8_config_file(&state, false).await;
     Ok(key)
 }
 
 #[tauri::command]
-pub async fn get_mt5_status(state: State<'_, AppState>) -> AppResult<crate::models::Mt5Status> {
+pub async fn get_mt5_status(state: State<'_, AppState>) -> AppResult<crate::models::BridgeStatus> {
     Ok(state.status().await)
+}
+
+#[tauri::command]
+pub async fn get_nt8_status(state: State<'_, AppState>) -> AppResult<crate::models::BridgeStatus> {
+    Ok(state.nt8_status().await)
 }
 
 #[tauri::command]
 pub async fn restart_mt5_server(
     state: State<'_, AppState>,
     app: AppHandle,
-) -> AppResult<crate::models::Mt5Status> {
+) -> AppResult<crate::models::BridgeStatus> {
     state.restart_server(app).await
+}
+
+#[tauri::command]
+pub async fn restart_bridge_server(
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> AppResult<crate::models::BridgeStatus> {
+    state.restart_server(app).await
+}
+
+#[tauri::command]
+pub async fn write_nt8_config(state: State<'_, AppState>) -> AppResult<String> {
+    write_nt8_config_file(&state, true).await?.ok_or_else(|| {
+        AppError::NotFound(
+            "No se encontró la carpeta Custom de NinjaTrader 8. Abre NinjaTrader una vez o instala el AddOn manualmente."
+                .into(),
+        )
+    })
+}
+
+#[tauri::command]
+pub async fn open_nt8_folder() -> AppResult<()> {
+    let Some(dir) = nt8_custom_dir() else {
+        return Err(AppError::NotFound(
+            "No se encontró la carpeta Custom de NinjaTrader 8.".into(),
+        ));
+    };
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(&dir)
+            .spawn()
+            .map_err(AppError::from)?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = &dir;
+    }
+    Ok(())
 }
 
 #[tauri::command]

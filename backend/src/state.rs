@@ -8,7 +8,7 @@ use tokio::sync::{Mutex, RwLock};
 
 use crate::db;
 use crate::error::{AppError, AppResult};
-use crate::models::Mt5Status;
+use crate::models::BridgeStatus;
 use crate::util::now_iso;
 
 const LEGACY_DATA_DIR_NAME: &str = "com.jairo.plandetrading";
@@ -19,11 +19,12 @@ pub struct AppState {
     pub db: SqlitePool,
     pub data_dir: PathBuf,
     pub api_key: Arc<RwLock<String>>,
-    pub mt5: Arc<Mt5ServerManager>,
+    pub bridge: Arc<BridgeServerManager>,
 }
 
-pub struct Mt5ServerManager {
-    pub status: RwLock<Mt5Status>,
+pub struct BridgeServerManager {
+    pub mt5: RwLock<BridgeStatus>,
+    pub nt8: RwLock<BridgeStatus>,
     pub handle: Mutex<Option<JoinHandle<()>>>,
 }
 
@@ -45,26 +46,30 @@ impl AppState {
         let api_key = db::get_setting(&pool, "api_key").await?.unwrap_or_default();
         let port = db::get_api_port(&pool).await?;
 
+        let mt5_status = BridgeStatus {
+            running: false,
+            port,
+            app_version: env!("CARGO_PKG_VERSION").to_string(),
+            ..BridgeStatus::default()
+        };
+        let nt8_status = mt5_status.clone();
+
         Ok(Self {
             app: app.clone(),
             db: pool,
             data_dir,
             api_key: Arc::new(RwLock::new(api_key)),
-            mt5: Arc::new(Mt5ServerManager {
-                status: RwLock::new(Mt5Status {
-                    running: false,
-                    port,
-                    app_version: env!("CARGO_PKG_VERSION").to_string(),
-                    ..Mt5Status::default()
-                }),
+            bridge: Arc::new(BridgeServerManager {
+                mt5: RwLock::new(mt5_status),
+                nt8: RwLock::new(nt8_status),
                 handle: Mutex::new(None),
             }),
         })
     }
 
-    pub async fn start_server(&self, app: AppHandle) -> AppResult<Mt5Status> {
+    pub async fn start_server(&self, app: AppHandle) -> AppResult<BridgeStatus> {
         {
-            let mut guard = self.mt5.handle.lock().await;
+            let mut guard = self.bridge.handle.lock().await;
             if let Some(handle) = guard.take() {
                 handle.abort();
             }
@@ -72,25 +77,31 @@ impl AppState {
 
         let port = db::get_api_port(&self.db).await?;
         {
-            let mut status = self.mt5.status.write().await;
-            status.running = false;
-            status.connected = false;
-            status.port = port;
-            status.error = None;
-            status.started_at = None;
+            let mut mt5 = self.bridge.mt5.write().await;
+            reset_status(&mut mt5, port);
+            let mut nt8 = self.bridge.nt8.write().await;
+            reset_status(&mut nt8, port);
         }
 
         let listener = match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
             Ok(listener) => listener,
             Err(error) => {
-                let mut status = self.mt5.status.write().await;
-                status.error = Some(format!(
+                let message = format!(
                     "No se pudo abrir el puerto {port}: {error}. Cambia el puerto en Ajustes."
-                ));
-                let snapshot = status.clone();
-                drop(status);
-                emit_status(&app, &snapshot);
-                return Ok(snapshot);
+                );
+                let mt5_snapshot = {
+                    let mut mt5 = self.bridge.mt5.write().await;
+                    mt5.error = Some(message.clone());
+                    mt5.clone()
+                };
+                let nt8_snapshot = {
+                    let mut nt8 = self.bridge.nt8.write().await;
+                    nt8.error = Some(message);
+                    nt8.clone()
+                };
+                emit_status(&app, "mt5", &mt5_snapshot);
+                emit_status(&app, "nt8", &nt8_snapshot);
+                return Ok(mt5_snapshot);
             }
         };
 
@@ -98,38 +109,54 @@ impl AppState {
         let state_for_task = self.clone();
         let app_for_task = app.clone();
 
-        {
-            let mut status = self.mt5.status.write().await;
-            status.running = true;
-            status.started_at = Some(now_iso());
-        }
-
-        let snapshot = self.mt5.status.read().await.clone();
-        emit_status(&app, &snapshot);
+        let (mt5_snapshot, nt8_snapshot) = {
+            let mut mt5 = self.bridge.mt5.write().await;
+            mt5.running = true;
+            mt5.started_at = Some(now_iso());
+            let mut nt8 = self.bridge.nt8.write().await;
+            nt8.running = true;
+            nt8.started_at = mt5.started_at.clone();
+            (mt5.clone(), nt8.clone())
+        };
+        emit_status(&app, "mt5", &mt5_snapshot);
+        emit_status(&app, "nt8", &nt8_snapshot);
 
         let handle = tauri::async_runtime::spawn(async move {
-            log::info!("Servidor MT5 escuchando en 127.0.0.1:{port}");
+            log::info!("Servidor de puentes escuchando en 127.0.0.1:{port}");
             if let Err(error) = axum::serve(listener, router).await {
-                log::error!("Servidor MT5 detenido: {error}");
-                let mut status = state_for_task.mt5.status.write().await;
-                status.running = false;
-                status.error = Some(error.to_string());
-                let snapshot = status.clone();
-                drop(status);
-                emit_status(&app_for_task, &snapshot);
+                log::error!("Servidor de puentes detenido: {error}");
+                let message = error.to_string();
+                let mt5_snapshot = {
+                    let mut mt5 = state_for_task.bridge.mt5.write().await;
+                    mt5.running = false;
+                    mt5.error = Some(message.clone());
+                    mt5.clone()
+                };
+                let nt8_snapshot = {
+                    let mut nt8 = state_for_task.bridge.nt8.write().await;
+                    nt8.running = false;
+                    nt8.error = Some(message);
+                    nt8.clone()
+                };
+                emit_status(&app_for_task, "mt5", &mt5_snapshot);
+                emit_status(&app_for_task, "nt8", &nt8_snapshot);
             }
         });
 
-        *self.mt5.handle.lock().await = Some(handle);
-        Ok(snapshot)
+        *self.bridge.handle.lock().await = Some(handle);
+        Ok(mt5_snapshot)
     }
 
-    pub async fn restart_server(&self, app: AppHandle) -> AppResult<Mt5Status> {
+    pub async fn restart_server(&self, app: AppHandle) -> AppResult<BridgeStatus> {
         self.start_server(app).await
     }
 
-    pub async fn status(&self) -> Mt5Status {
-        self.mt5.status.read().await.clone()
+    pub async fn status(&self) -> BridgeStatus {
+        self.bridge.mt5.read().await.clone()
+    }
+
+    pub async fn nt8_status(&self) -> BridgeStatus {
+        self.bridge.nt8.read().await.clone()
     }
 
     pub async fn set_api_key(&self, value: String) {
@@ -139,6 +166,14 @@ impl AppState {
     pub async fn current_api_key(&self) -> String {
         self.api_key.read().await.clone()
     }
+}
+
+fn reset_status(status: &mut BridgeStatus, port: u16) {
+    status.running = false;
+    status.connected = false;
+    status.port = port;
+    status.error = None;
+    status.started_at = None;
 }
 
 async fn migrate_legacy_data_dir(data_dir: &Path) -> AppResult<()> {
@@ -191,8 +226,8 @@ async fn copy_dir_contents(src: &Path, dst: &Path, skip_root_db: bool) -> AppRes
     Ok(())
 }
 
-fn emit_status(app: &AppHandle, status: &Mt5Status) {
-    let _ = app.emit("mt5://status", status.clone());
+fn emit_status(app: &AppHandle, provider: &str, status: &BridgeStatus) {
+    let _ = app.emit(&format!("{provider}://status"), status.clone());
 }
 
 #[cfg(test)]

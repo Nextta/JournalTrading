@@ -1,6 +1,6 @@
 # JournalTrading
 
-Diario de trading de escritorio para Windows con sincronización en tiempo real desde MetaTrader 5. La aplicación combina un frontend Angular, un backend Rust/Tauri con SQLite y un Expert Advisor (EA) para MT5.
+Diario de trading de escritorio para Windows con sincronización en tiempo real desde MetaTrader 5 y NinjaTrader 8. La aplicación combina un frontend Angular, un backend Rust/Tauri con SQLite, un Expert Advisor (EA) para MT5 y un AddOn para NT8.
 
 ## Características
 
@@ -13,14 +13,16 @@ Diario de trading de escritorio para Windows con sincronización en tiempo real 
 - **Cuentas**: soporte multi-cuenta, activación, archivo y aprobación de cuentas nuevas detectadas por el EA.
 - **Ajustes**: API key, puerto local, zona horaria, carpeta de datos y copias de seguridad.
 - **Integración MT5**: captura todas las operaciones de la cuenta, sin filtrar por número mágico.
+- **Integración NinjaTrader 8**: AddOn de solo lectura que sincroniza cuentas, ejecuciones, posiciones abiertas y velas bajo demanda.
 
 ## Arquitectura
 
 ```text
-MetaTrader 5
-  └─ Expert Advisor (MQL5)
-        │ HTTP JSON + X-Api-Key
-        ▼
+MetaTrader 5                          NinjaTrader 8
+  └─ Expert Advisor (MQL5)              └─ AddOn (C#)
+        │ HTTP JSON + X-Api-Key                │ HTTP JSON + X-Api-Key
+        └──────────────┬───────────────────────┘
+                       ▼
 Backend Tauri / Rust (axum, 127.0.0.1:4477)
   ├─ SQLite (%APPDATA%\com.jairo.journaltrading)
   ├─ Eventos Tauri
@@ -31,7 +33,7 @@ Frontend Angular 22 (WebView2)
 ```
 
 - El frontend no accede directamente a la API HTTP: usa comandos y eventos de Tauri.
-- El EA envía heartbeats, operaciones, deals y velas; las peticiones de velas se encolan y el EA las resuelve en la siguiente sincronización.
+- El EA y el AddOn envían heartbeats, operaciones, deals y velas; las peticiones de velas se encolan y cada puente las resuelve en su siguiente sincronización.
 - Toda la información se guarda localmente. No se envía nada a servicios externos.
 
 ## Stack
@@ -44,6 +46,7 @@ Frontend Angular 22 (WebView2)
 | Gráficos | ECharts, lightweight-charts |
 | Editor | Quill 2 |
 | EA | MQL5 |
+| AddOn NT8 | C# / .NET Framework 4.8 |
 | Instalador | NSIS |
 
 ## Requisitos
@@ -55,6 +58,7 @@ Frontend Angular 22 (WebView2)
 - WebView2 Runtime.
 - PowerShell 5.1+ (solo para el simulador).
 - MetaTrader 5 (opcional, para datos reales).
+- NinjaTrader 8 (opcional, para datos reales).
 
 ## Desarrollo
 
@@ -127,6 +131,44 @@ Notas:
 - Si cambias el puerto en Ajustes, actualiza también `InpApiUrl` en el EA.
 - La app escucha solo en `127.0.0.1`; no expongas el puerto a la red.
 
+## Conexión con NinjaTrader 8
+
+La integración con NT8 es de **solo lectura**: sincroniza cuentas, ejecuciones, posiciones abiertas y velas, pero no envía órdenes.
+
+1. Cierra NinjaTrader 8.
+2. Instala el AddOn desde PowerShell:
+
+   ```powershell
+   .\tools\install-nt8-bridge.ps1
+   ```
+
+   El script copia `nt8\JournalTradingBridge.cs` a `Documents\NinjaTrader 8\bin\Custom\AddOns`, lo añade al proyecto `NinjaTrader.Custom.csproj`, genera `JournalTradingBridge.json` (si le pasas `-ApiKey`) y compila con MSBuild. Si prefieres compilar desde NinjaTrader, usa `-NoBuild` y pulsa F5 en el editor de NinjaScript.
+
+3. Abre JournalTrading y ve a **Ajustes > Puente NinjaTrader 8**. Pulsa **Escribir configuración NT8** para generar o actualizar `JournalTradingBridge.json` con la API key y el puerto actuales.
+4. Abre NinjaTrader 8. El AddOn se carga automáticamente y envía un heartbeat cada 5 segundos.
+5. La primera vez, la cuenta aparecerá en estado **pendiente** en **Cuentas**. Actívala para empezar a usarla.
+
+Configuración (`Documents\NinjaTrader 8\bin\Custom\JournalTradingBridge.json`):
+
+| Campo | Por defecto | Descripción |
+| --- | --- | --- |
+| `apiUrl` | `http://127.0.0.1:4477` | URL local del backend |
+| `apiKey` | vacío | API key copiada desde Ajustes |
+| `heartbeatSeconds` | `5` | Frecuencia del heartbeat |
+| `syncSeconds` | `15` | Frecuencia de sincronización |
+| `historyDays` | `0` | Días de historial inicial (`0` = todo el historial de NT8) |
+| `verbose` | `true` | Logs en la pestaña Output de NT8 |
+
+Notas:
+
+- El AddOn lee el historial de ejecuciones de la base de datos local de NT8 (`Execution.DbGet`) y combina las ejecuciones de la sesión actual.
+- Las operaciones se agrupan por cuenta, instrumento y posición de NT8. Cada ejecución se envía como un deal; el beneficio de las salidas se calcula con el precio medio de entrada y el `PointValue` del instrumento.
+- Las posiciones abiertas incluyen SL/TP aproximados a partir de las órdenes activas de NT8.
+- Las velas se solicitan al AddOn bajo demanda con `BarsRequest` y se cachean en SQLite.
+- Los símbolos de futuros se guardan con el contrato completo (por ejemplo, `ES 12-25`). Si el contrato ha expirado, el AddOn intenta resolverlo con `GetInstrumentFuzzy`.
+- El AddOn no se conecta a Internet: solo llama a `127.0.0.1`. No requiere configurar WebRequest.
+- Si cambias el puerto o regeneras la API key, vuelve a pulsar **Escribir configuración NT8** o actualiza el JSON a mano.
+
 ## Simulador MT5
 
 El repositorio incluye un simulador en PowerShell para probar la integración sin MT5. La app debe estar en ejecución.
@@ -149,6 +191,29 @@ Parámetros disponibles:
 | `-SyncSeconds` | `15` | Frecuencia de sincronización |
 
 El simulador crea la cuenta `990001 / Simulator-Demo`, con balance inicial de 10.000 USD, tres operaciones de ejemplo y velas para los gráficos. También responde a los comandos de series que solicite la app.
+
+## Simulador NinjaTrader 8
+
+El repositorio incluye un simulador en PowerShell para probar la integración NT8 sin abrir NinjaTrader. La app debe estar en ejecución.
+
+```powershell
+$env:JOURNAL_TRADING_API_KEY = "tu-api-key"
+.\tools\simulate-nt8.ps1 -HeartbeatSeconds 2 -SyncSeconds 5
+```
+
+Parámetros disponibles:
+
+| Parámetro | Por defecto | Descripción |
+| --- | --- | --- |
+| `-ApiKey` | `$env:JOURNAL_TRADING_API_KEY` | API key de la app |
+| `-Port` | `4477` | Puerto del backend |
+| `-Login` | `1001` | Identificador de la cuenta simulada |
+| `-Server` | `Simulator` | Conexión de la cuenta simulada |
+| `-OffsetSeconds` | `0` | Desfase horario |
+| `-HeartbeatSeconds` | `5` | Frecuencia del heartbeat |
+| `-SyncSeconds` | `15` | Frecuencia de sincronización |
+
+El simulador crea la cuenta `1001 / Simulator` con 50.000 USD, operaciones de futuros ES/NQ, una posición abierta con SL/TP y velas para los gráficos. También responde a los comandos de series.
 
 ## Datos y copias de seguridad
 
@@ -185,6 +250,11 @@ El backend expone una API HTTP en `127.0.0.1:4477` (configurable). Todas las rut
 | `POST` | `/api/v1/mt5/series` | Velas solicitadas por la app |
 | `POST` | `/api/v1/mt5/events` | Eventos y logs del EA |
 | `POST` | `/api/v1/mt5/commands/result` | Resultado de un comando |
+| `POST` | `/api/v1/nt8/heartbeat` | Estado de cuenta y conexión del AddOn |
+| `POST` | `/api/v1/nt8/sync` | Ejecuciones y posiciones de NinjaTrader 8 |
+| `POST` | `/api/v1/nt8/series` | Velas solicitadas por la app |
+| `POST` | `/api/v1/nt8/events` | Eventos y logs del AddOn |
+| `POST` | `/api/v1/nt8/commands/result` | Resultado de un comando |
 
 Comprobación rápida:
 
@@ -200,7 +270,7 @@ JournalTrading/
 │  ├─ migrations/            Esquema SQLite
 │  ├─ src/
 │  │  ├─ commands.rs         Comandos Tauri
-│  │  ├─ mt5.rs              API HTTP, ingesta y cola de comandos
+│  │  ├─ mt5.rs              API HTTP, ingesta y cola de comandos (MT5 y NT8)
 │  │  ├─ stats.rs            Cálculo de estadísticas
 │  │  ├─ services.rs         Lógica de diario, activos e imágenes
 │  │  ├─ db.rs               Conexión, migraciones y ajustes
@@ -215,8 +285,12 @@ JournalTrading/
 ├─ mt5/
 │  ├─ TradingJournalBridge.mq5
 │  └─ TradingJournalBridge.ex5
+├─ nt8/
+│  └─ JournalTradingBridge.cs
 ├─ tools/
-│  └─ simulate-mt5.ps1
+│  ├─ simulate-mt5.ps1
+│  ├─ simulate-nt8.ps1
+│  └─ install-nt8-bridge.ps1
 └─ package.json
 ```
 
@@ -232,15 +306,18 @@ JournalTrading/
 | `npm run test:rust` | Tests del backend |
 | `npm run check:rust` | Formato y clippy con warnings como errores |
 | `npm run fmt:rust` | Formatea el código Rust |
+| `npm run simulate:mt5` | Simulador del puente MT5 |
+| `npm run simulate:nt8` | Simulador del puente NinjaTrader 8 |
+| `npm run install:nt8` | Instala y compila el AddOn de NinjaTrader 8 |
 
 ## Modelo de datos
 
-- Una **cuenta** se identifica por `login + servidor` y puede estar `pending`, `active` o `archived`.
+- Una **cuenta** se identifica por `login + servidor`, pertenece a un proveedor (`mt5` o `ninjatrader`) y puede estar `pending`, `active` o `archived`.
 - Solo puede haber una cuenta activa a la vez.
 - El **diario** se identifica por cuenta y fecha del bróker.
 - Cada **activo del día** se identifica por diario y símbolo.
-- Cada **operación** se identifica por cuenta y ticket de posición.
-- Los **deals** se identifican por cuenta y ticket de deal.
+- Cada **operación** se identifica por cuenta y ticket de posición. En NT8 el ticket se deriva de forma estable del instrumento y de la posición de la ejecución.
+- Los **deals** se identifican por cuenta y ticket de deal. En NT8 se usa el identificador de la ejecución.
 - Las **velas** se cachean por operación y timeframe.
 - Los puntos de la estrategia se copian como instantánea al activo del día, de modo que cambios posteriores en la estrategia no alteran el pasado.
 - Se guarda la hora del bróker y la hora UTC; los agrupamientos diarios usan la fecha del bróker.
@@ -258,6 +335,32 @@ JournalTrading/
 **La cuenta aparece pendiente**
 
 - Es el comportamiento esperado para cuentas nuevas. Actívala desde **Cuentas**.
+
+**El AddOn de NinjaTrader 8 no conecta**
+
+- Comprueba que `Documents\NinjaTrader 8\bin\Custom\JournalTradingBridge.json` exista y tenga la API key y el puerto correctos.
+- En la app, pulsa **Ajustes > Puente NinjaTrader 8 > Escribir configuración NT8**.
+- Revisa la pestaña **Output** de NinjaTrader 8: el AddOn escribe allí los errores HTTP y de configuración.
+- Verifica que el AddOn aparezca compilado en `Documents\NinjaTrader 8\bin\Custom\NinjaTrader.Custom.dll` y que NT8 se haya reiniciado después de compilar.
+- Comprueba que `127.0.0.1:4477` no esté bloqueado por firewall o antivirus.
+
+**No aparecen las operaciones antiguas de NinjaTrader**
+
+- El AddOn usa la base de datos local de NT8. La primera sincronización puede tardar; revisa la pestaña Output.
+- Con `historyDays: 0` se solicita todo el historial disponible. Si solo quieres los últimos meses, cambia el valor en el JSON.
+- Las ejecuciones deben existir en la cuenta de NT8; las cuentas de backtest y playback se ignoran.
+
+**Los gráficos de NT8 no aparecen**
+
+- La app solicita las velas al AddOn con `BarsRequest` y las recibe en la siguiente sincronización (15 s por defecto).
+- Comprueba que el instrumento tenga datos históricos en NT8 y que el contrato no haya expirado.
+- Revisa la pestaña **Output** de NT8 para ver errores de `BarsRequest`.
+
+**El AddOn no compila**
+
+- Cierra NinjaTrader antes de compilar: el DLL está bloqueado mientras la aplicación está abierta.
+- Ejecuta `tools\install-nt8-bridge.ps1` y revisa la salida de MSBuild.
+- Si tu proyecto Custom tiene errores propios, usa `-NoBuild` y compila solo desde el editor de NinjaScript.
 
 **Los gráficos no aparecen**
 
@@ -280,4 +383,4 @@ JournalTrading/
 
 ## Estado
 
-La aplicación está verificada de extremo a extremo con el simulador incluido: ingesta de cuentas, operaciones, deals, estadísticas, diario, estrategias, series de velas, backups y compilación del instalador. Para usar datos reales solo falta configurar MT5 y el EA como se indica arriba.
+La aplicación está verificada de extremo a extremo con los simuladores incluidos: ingesta de cuentas, operaciones, deals, estadísticas, diario, estrategias, series de velas, backups y compilación del instalador. Para usar datos reales solo falta configurar MT5 con el EA o NT8 con el AddOn como se indica arriba.
