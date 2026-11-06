@@ -25,6 +25,7 @@ log = "0.4"
 thiserror = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
+sha2 = "0.10"
 sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite", "migrate", "macros", "chrono", "uuid"] }
 tokio = { version = "1", features = ["full"] }
 axum = "0.8"
