@@ -52,6 +52,7 @@ export class SettingsPage {
   protected readonly regenerating = signal(false);
   protected readonly backingUp = signal(false);
   protected readonly writingNt8 = signal(false);
+  protected readonly writingAtas = signal(false);
   protected readonly showKey = signal(false);
   protected port = 4477;
   protected timezoneMode: 'broker' | 'local' = 'broker';
@@ -170,6 +171,28 @@ export class SettingsPage {
       this.notifications.error(error);
     } finally {
       this.writingNt8.set(false);
+    }
+  }
+
+  protected async configureAtas(): Promise<void> {
+    if (this.writingAtas()) return;
+    this.writingAtas.set(true);
+    try {
+      const path = await this.api.writeAtasConfig();
+      await this.store.refreshSettings();
+      this.notifications.success(`Configuración de ATAS escrita en ${path}`);
+    } catch (error) {
+      this.notifications.error(error);
+    } finally {
+      this.writingAtas.set(false);
+    }
+  }
+
+  protected async openAtasFolder(): Promise<void> {
+    try {
+      await this.api.openAtasIndicatorsFolder();
+    } catch (error) {
+      this.notifications.error(error);
     }
   }
 

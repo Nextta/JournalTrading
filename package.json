@@ -13,6 +13,7 @@
     "simulate:mt5": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/simulate-mt5.ps1",
     "simulate:nt8": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/simulate-nt8.ps1",
     "install:nt8": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/install-nt8-bridge.ps1",
+    "install:atas": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/install-atas-bridge.ps1",
     "fmt:rust": "cargo fmt --manifest-path backend/Cargo.toml",
     "check:rust": "cargo fmt --manifest-path backend/Cargo.toml --check && cargo clippy --manifest-path backend/Cargo.toml -- -D warnings",
     "test:rust": "cargo test --manifest-path backend/Cargo.toml"

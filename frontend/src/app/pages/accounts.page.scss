@@ -198,6 +198,12 @@
     var(--surface-1);
 }
 
+.bridge-card.atas-card {
+  background:
+    radial-gradient(70% 140% at 100% 0%, rgba(20, 184, 166, 0.12), transparent 55%),
+    var(--surface-1);
+}
+
 .provider-pill {
   color: var(--muted);
   background: rgba(139, 147, 167, 0.12);
@@ -207,6 +213,11 @@
   &.nt8 {
     color: #c4b5fd;
     background: rgba(139, 92, 246, 0.14);
+  }
+
+  &.atas {
+    color: #5eead4;
+    background: rgba(20, 184, 166, 0.14);
   }
 }
 

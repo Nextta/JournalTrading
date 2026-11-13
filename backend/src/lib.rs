@@ -1,3 +1,4 @@
+mod atas;
 mod commands;
 mod db;
 mod error;
@@ -32,6 +33,7 @@ pub fn run() {
 
             let state = tauri::async_runtime::block_on(AppState::new(app.handle()))?;
             app.manage(state.clone());
+            atas::spawn(state.clone());
 
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -92,6 +94,9 @@ pub fn run() {
             commands::restart_bridge_server,
             commands::write_nt8_config,
             commands::open_nt8_folder,
+            commands::get_atas_status,
+            commands::write_atas_config,
+            commands::open_atas_indicators_folder,
             commands::open_data_dir,
             commands::create_backup,
         ])

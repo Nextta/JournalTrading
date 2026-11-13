@@ -33,7 +33,7 @@
           <div class="mini-copy">
             <strong>{{ account.displayName }}</strong>
             <small>
-              {{ account.provider === 'ninjatrader' ? 'NT8' : 'MT5' }} · {{ account.login }} ·
+              {{ accountRef(account) }} ·
               {{ account.server }}
             </small>
           </div>
@@ -86,7 +86,7 @@
             <strong>{{ store.activeAccount()?.displayName ?? 'Sin cuenta' }}</strong>
             <small>
               @if (store.activeAccount(); as account) {
-                {{ account.provider === 'ninjatrader' ? 'NT8' : 'MT5' }} · {{ account.login }} ·
+                {{ accountRef(account) }} ·
                 {{ account.currency }}
               } @else {
                 Configura una cuenta
@@ -179,6 +179,35 @@
   }
 
   <div class="menu-separator"></div>
+
+  <div class="menu-head">
+    <span class="material-symbols-outlined" [class.text-pos]="store.atasConnected()">
+      {{ store.atasConnected() ? 'sensors' : 'sensors_off' }}
+    </span>
+    <div>
+      <strong>ATAS X</strong>
+      <small>Base de datos local{{ store.atasIndicatorConnected() ? ' + indicador' : '' }}</small>
+    </div>
+    <span class="menu-status" [class.online]="store.atasConnected()">
+      {{ store.atasConnected() ? 'Sincronizado' : 'Sin datos' }}
+    </span>
+  </div>
+  <button mat-menu-item disabled>
+    <span class="material-symbols-outlined">schedule</span>
+    <span>Última lectura: {{ store.atas()?.lastHeartbeatAt ?? 'nunca' }}</span>
+  </button>
+  <button mat-menu-item disabled>
+    <span class="material-symbols-outlined">extension</span>
+    <span>Indicador: {{ store.atas()?.eaVersion ?? 'no conectado' }}</span>
+  </button>
+  @if (store.atas()?.error; as error) {
+    <button mat-menu-item disabled>
+      <span class="material-symbols-outlined text-neg">error</span>
+      <span>{{ error }}</span>
+    </button>
+  }
+
+  <div class="menu-separator"></div>
   <button mat-menu-item routerLink="/ajustes">
     <span class="material-symbols-outlined">settings</span>
     <span>Configurar conexiones</span>
@@ -199,7 +228,7 @@
       <span class="menu-account">
         <strong>{{ account.displayName }}</strong>
         <small>
-          {{ account.provider === 'ninjatrader' ? 'NT8' : 'MT5' }} · {{ account.login }} ·
+          {{ accountRef(account) }} ·
           {{ account.server }} · {{ money(account.balance) }}
         </small>
       </span>
@@ -217,7 +246,7 @@
         <span class="menu-account">
           <strong>{{ account.displayName }}</strong>
           <small>
-            {{ account.provider === 'ninjatrader' ? 'NT8' : 'MT5' }} · {{ account.login }} ·
+            {{ accountRef(account) }} ·
             {{ account.server }}
           </small>
         </span>

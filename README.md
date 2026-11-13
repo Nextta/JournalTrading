@@ -1,6 +1,6 @@
 # JournalTrading
 
-Diario de trading de escritorio para Windows con sincronización en tiempo real desde MetaTrader 5 y NinjaTrader 8. La aplicación combina un frontend Angular, un backend Rust/Tauri con SQLite, un Expert Advisor (EA) para MT5 y un AddOn para NT8.
+Diario de trading de escritorio para Windows con sincronización desde MetaTrader 5, NinjaTrader 8 y ATAS X. La aplicación combina un frontend Angular, un backend Rust/Tauri con SQLite, un Expert Advisor (EA) para MT5, un AddOn para NT8 y un lector de la base de datos local de ATAS con un indicador opcional.
 
 ## Características
 
@@ -14,14 +14,17 @@ Diario de trading de escritorio para Windows con sincronización en tiempo real 
 - **Ajustes**: API key, puerto local, zona horaria, carpeta de datos y copias de seguridad.
 - **Integración MT5**: captura todas las operaciones de la cuenta, sin filtrar por número mágico.
 - **Integración NinjaTrader 8**: AddOn de solo lectura que sincroniza cuentas, ejecuciones, posiciones abiertas y velas bajo demanda.
+- **Integración ATAS X**: lectura directa del historial completo de todas las cuentas desde la base de datos local de ATAS, más un indicador opcional para tiempo real y velas.
 
 ## Arquitectura
 
 ```text
-MetaTrader 5                          NinjaTrader 8
-  └─ Expert Advisor (MQL5)              └─ AddOn (C#)
-        │ HTTP JSON + X-Api-Key                │ HTTP JSON + X-Api-Key
-        └──────────────┬───────────────────────┘
+MetaTrader 5               NinjaTrader 8            ATAS X
+  └─ Expert Advisor (MQL5)   └─ AddOn (C#)            ├─ Base de datos local (*.cdb)
+        │ HTTP + X-Api-Key         │ HTTP + X-Api-Key  │     │ lectura de archivos
+        │                          │                  └─ Indicador (C#, opcional)
+        │                          │                        │ HTTP + X-Api-Key
+        └──────────────┬───────────┴────────────────────────┘
                        ▼
 Backend Tauri / Rust (axum, 127.0.0.1:4477)
   ├─ SQLite (%APPDATA%\com.jairo.journaltrading)
@@ -34,6 +37,7 @@ Frontend Angular 22 (WebView2)
 
 - El frontend no accede directamente a la API HTTP: usa comandos y eventos de Tauri.
 - El EA y el AddOn envían heartbeats, operaciones, deals y velas; las peticiones de velas se encolan y cada puente las resuelve en su siguiente sincronización.
+- ATAS no necesita plugin para el historial: el backend relee su base de datos local cada 5 segundos cuando cambia. El indicador opcional añade tiempo real y velas.
 - Toda la información se guarda localmente. No se envía nada a servicios externos.
 
 ## Stack
@@ -47,6 +51,7 @@ Frontend Angular 22 (WebView2)
 | Editor | Quill 2 |
 | EA | MQL5 |
 | AddOn NT8 | C# / .NET Framework 4.8 |
+| Indicador ATAS | C# / .NET 10 |
 | Instalador | NSIS |
 
 ## Requisitos
@@ -59,6 +64,7 @@ Frontend Angular 22 (WebView2)
 - PowerShell 5.1+ (solo para el simulador).
 - MetaTrader 5 (opcional, para datos reales).
 - NinjaTrader 8 (opcional, para datos reales).
+- ATAS X (opcional, para datos reales). El indicador necesita el SDK de .NET 10 para compilarse.
 
 ## Desarrollo
 
@@ -170,6 +176,36 @@ Notas:
 - El AddOn no se conecta a Internet: solo llama a `127.0.0.1`. No requiere configurar WebRequest.
 - Si cambias el puerto o regeneras la API key, vuelve a pulsar **Escribir configuración NT8** o actualiza el JSON a mano.
 
+## Conexión con ATAS X
+
+La integración con ATAS es de **solo lectura** y tiene dos partes:
+
+1. **Base de datos local (automática)**. La app lee `%APPDATA%\ATAS X\Database` (`MyTrade`, `HistoryMyTrade`, `Portfolio`, `Position` y `Security`). Trae el historial completo de todas las cuentas aunque ATAS esté cerrado, y relee los archivos cada 5 segundos cuando cambian. No hay que configurar nada.
+2. **Indicador `JournalTrading Bridge` (opcional)**. Envía en tiempo real la cuenta del gráfico (balance, PnL abierto, posición y ejecuciones de la sesión) sin esperar a que ATAS guarde su base de datos, y sirve las velas M1–W1 para los gráficos de cualquier instrumento.
+
+Instalación del indicador:
+
+1. Abre JournalTrading y pulsa **Ajustes > ATAS X > Escribir configuración ATAS**. Se genera `%APPDATA%\ATAS X\JournalTradingBridge.json` con la API key y el puerto.
+2. Compila e instala el indicador:
+
+   ```powershell
+   .\tools\install-atas-bridge.ps1
+   ```
+
+   El script compila `atas\JournalTradingBridge` con `dotnet` contra los ensamblados de `C:\Program Files\ATAS X` y copia `JournalTradingBridge.dll` a `%APPDATA%\ATAS X\Indicators`. Con `-ApiKey` también escribe el JSON de configuración.
+3. En ATAS, añade **JournalTrading Bridge** (categoría *JournalTrading*) a un gráfico de la cuenta que quieras seguir en tiempo real. Basta un gráfico por cuenta. La API key también se puede escribir en los ajustes del indicador.
+
+Notas:
+
+- Las cuentas nuevas aparecen como **pendientes** en **Cuentas**. Actívalas para usarlas.
+- Se ignoran las cuentas `Replay`, `Backtest` y `Playback`, y también las que ATAS recibe a través de NinjaTrader 8 (instrumentos con nombre de NT8, como `NQ 12-26`, o cuentas que ya existen como NT8), porque ya las sincroniza el AddOn de NT8.
+- Las operaciones se reconstruyen por cuenta e instrumento siguiendo la posición neta, igual que en NT8. El beneficio de cada salida es el PnL que calcula ATAS (`HistoryMyTrade`). Si no existe, se calcula con `TickSize` y `TickCost`.
+- Los símbolos se guardan con el identificador de ATAS (por ejemplo, `NQZ6@CME`).
+- ATAS guarda las horas en UTC. La hora del bróker es la hora local del equipo.
+- Las posiciones que solo aparecen en `Position.cdb` y no tienen ejecuciones (por ejemplo, acciones antiguas de IBKR) no se importan como operaciones.
+- El botón **Sincronizar** fuerza una relectura completa de la base de datos de ATAS.
+- Sin el indicador, los gráficos de las operaciones de ATAS no tienen velas.
+
 ## Simulador MT5
 
 El repositorio incluye un simulador en PowerShell para probar la integración sin MT5. La app debe estar en ejecución.
@@ -256,6 +292,10 @@ El backend expone una API HTTP en `127.0.0.1:4477` (configurable). Todas las rut
 | `POST` | `/api/v1/nt8/series` | Velas solicitadas por la app |
 | `POST` | `/api/v1/nt8/events` | Eventos y logs del AddOn |
 | `POST` | `/api/v1/nt8/commands/result` | Resultado de un comando |
+| `POST` | `/api/v1/atas/heartbeat` | Cuenta, posición y ejecuciones en tiempo real del indicador de ATAS |
+| `POST` | `/api/v1/atas/series` | Velas solicitadas por la app |
+| `POST` | `/api/v1/atas/events` | Eventos y logs del indicador |
+| `POST` | `/api/v1/atas/commands/result` | Resultado de un comando |
 
 Comprobación rápida:
 
@@ -271,7 +311,8 @@ JournalTrading/
 │  ├─ migrations/            Esquema SQLite
 │  ├─ src/
 │  │  ├─ commands.rs         Comandos Tauri
-│  │  ├─ mt5.rs              API HTTP, ingesta y cola de comandos (MT5 y NT8)
+│  │  ├─ mt5.rs              API HTTP, ingesta y cola de comandos (MT5, NT8 y ATAS)
+│  │  ├─ atas.rs             Lector de la base de datos de ATAS e indicador
 │  │  ├─ stats.rs            Cálculo de estadísticas
 │  │  ├─ services.rs         Lógica de diario, activos e imágenes
 │  │  ├─ db.rs               Conexión, migraciones y ajustes
@@ -288,10 +329,13 @@ JournalTrading/
 │  └─ TradingJournalBridge.ex5
 ├─ nt8/
 │  └─ JournalTradingBridge.cs
+├─ atas/
+│  └─ JournalTradingBridge/   Indicador de ATAS X (.NET 10)
 ├─ tools/
 │  ├─ simulate-mt5.ps1
 │  ├─ simulate-nt8.ps1
-│  └─ install-nt8-bridge.ps1
+│  ├─ install-nt8-bridge.ps1
+│  └─ install-atas-bridge.ps1
 └─ package.json
 ```
 
@@ -310,15 +354,17 @@ JournalTrading/
 | `npm run simulate:mt5` | Simulador del puente MT5 |
 | `npm run simulate:nt8` | Simulador del puente NinjaTrader 8 |
 | `npm run install:nt8` | Instala y compila el AddOn de NinjaTrader 8 |
+| `npm run install:atas` | Compila e instala el indicador de ATAS X |
 
 ## Modelo de datos
 
-- Una **cuenta** se identifica por `login + servidor`, pertenece a un proveedor (`mt5` o `ninjatrader`) y puede estar `pending`, `active` o `archived`.
+- Una **cuenta** se identifica por `login + servidor`, pertenece a un proveedor (`mt5`, `ninjatrader` o `atas`) y puede estar `pending`, `active` o `archived`.
 - Solo puede haber una cuenta activa a la vez.
 - El **diario** se identifica por cuenta y fecha del bróker.
 - Cada **activo del día** se identifica por diario y símbolo.
 - Cada **operación** se identifica por cuenta y ticket de posición. En NT8 el ticket se deriva de forma estable del instrumento y de la posición de la ejecución.
 - Los **deals** se identifican por cuenta y ticket de deal. En NT8 se deriva del `ExecutionId` de la ejecución.
+- En ATAS el login es un número estable derivado del `AccountID` (el nombre de la cuenta se guarda como nombre visible) y el servidor es `ATAS X`. Los tickets se derivan del `AccountID`, el instrumento y el `Id` de cada ejecución.
 - Las **velas** se cachean por operación y timeframe.
 - Los puntos de la estrategia se copian como instantánea al activo del día, de modo que cambios posteriores en la estrategia no alteran el pasado.
 - Se guarda la hora del bróker y la hora UTC; los agrupamientos diarios usan la fecha del bróker.
@@ -362,6 +408,19 @@ JournalTrading/
 - Cierra NinjaTrader antes de compilar: el DLL está bloqueado mientras la aplicación está abierta.
 - Ejecuta `tools\install-nt8-bridge.ps1` y revisa la salida de MSBuild.
 - Si tu proyecto Custom tiene errores propios, usa `-NoBuild` y compila solo desde el editor de NinjaScript.
+
+**No aparecen las cuentas de ATAS**
+
+- Comprueba en **Ajustes > ATAS X** que se haya detectado la base de datos (`%APPDATA%\ATAS X\Database`).
+- Revisa **Cuentas**: las cuentas nuevas quedan pendientes hasta que las actives.
+- Las cuentas de Replay, Backtest, Playback y las que llegan a ATAS desde NinjaTrader se omiten a propósito.
+
+**El indicador de ATAS no conecta o no hay velas**
+
+- Pulsa **Ajustes > ATAS X > Escribir configuración ATAS**, o escribe la API key en los ajustes del indicador.
+- El indicador debe estar en un gráfico de la misma cuenta que la operación. Las velas se piden en el siguiente latido (5 s).
+- Revisa el registro de ATAS: el indicador escribe allí los errores HTTP con el prefijo `JournalTrading:`.
+- Si `install-atas-bridge.ps1` no puede copiar el DLL, cierra ATAS y vuelve a ejecutarlo.
 
 **Los gráficos no aparecen**
 

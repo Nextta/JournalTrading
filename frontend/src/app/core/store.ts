@@ -49,20 +49,34 @@ export class Store {
 
   readonly mt5 = computed<BridgeStatus | null>(() => this.settings()?.mt5 ?? null);
   readonly nt8 = computed<BridgeStatus | null>(() => this.settings()?.nt8 ?? null);
+  readonly atas = computed<BridgeStatus | null>(() => this.settings()?.atas ?? null);
 
   readonly mt5Connected = computed(() => this.isConnected(this.mt5()));
   readonly nt8Connected = computed(() => this.isConnected(this.nt8()));
-  readonly bridgeConnected = computed(() => this.mt5Connected() || this.nt8Connected());
+  readonly atasConnected = computed(() => this.isConnected(this.atas()));
+  /** El indicador de ATAS es opcional: solo cuenta si ha enviado su versión hace poco. */
+  readonly atasIndicatorConnected = computed(
+    () => this.atasConnected() && !!this.atas()?.eaVersion,
+  );
+  readonly bridgeConnected = computed(
+    () => this.mt5Connected() || this.nt8Connected() || this.atasConnected(),
+  );
 
   readonly activeProvider = computed(() => this.activeAccount()?.provider ?? 'mt5');
 
-  readonly activeAccountConnected = computed(() =>
-    this.activeProvider() === 'ninjatrader' ? this.nt8Connected() : this.mt5Connected(),
-  );
+  readonly activeAccountConnected = computed(() => {
+    const provider = this.activeProvider();
+    if (provider === 'ninjatrader') return this.nt8Connected();
+    if (provider === 'atas') return this.atasConnected();
+    return this.mt5Connected();
+  });
 
   readonly bridgeLabel = computed(() => {
     if (this.activeProvider() === 'ninjatrader') {
       return this.nt8Connected() ? 'NT8 conectado' : 'NT8 sin conexión';
+    }
+    if (this.activeProvider() === 'atas') {
+      return this.atasConnected() ? 'ATAS sincronizado' : 'ATAS sin datos';
     }
     return this.mt5Connected() ? 'MT5 conectado' : 'MT5 sin conexión';
   });
@@ -97,7 +111,10 @@ export class Store {
     return Number.isFinite(parsed) && Date.now() - parsed < 20_000;
   }
 
-  private applyHeartbeat(payload: Record<string, unknown>, provider: 'mt5' | 'nt8'): void {
+  private applyHeartbeat(
+    payload: Record<string, unknown>,
+    provider: 'mt5' | 'nt8' | 'atas',
+  ): void {
     const accountId = payload['accountId'] as string | undefined;
     const balance = payload['balance'] as number | undefined;
     const equity = payload['equity'] as number | undefined;
@@ -118,15 +135,13 @@ export class Store {
     }
     this.settings.update((current) => {
       if (!current) return current;
-      const status = provider === 'nt8' ? current.nt8 : current.mt5;
+      const status = current[provider];
       const updated: BridgeStatus = {
         ...status,
         connected: true,
         lastHeartbeatAt: now,
       };
-      return provider === 'nt8'
-        ? { ...current, nt8: updated }
-        : { ...current, mt5: updated };
+      return { ...current, [provider]: updated };
     });
   }
 
@@ -141,7 +156,13 @@ export class Store {
         current ? { ...current, nt8: status } : current,
       );
     });
+    await this.api.onAtasStatus((status) => {
+      this.settings.update((current) =>
+        current ? { ...current, atas: status } : current,
+      );
+    });
     await this.api.onMt5Heartbeat((payload) => this.applyHeartbeat(payload, 'mt5'));
+    await this.api.onAtasHeartbeat((payload) => this.applyHeartbeat(payload, 'atas'));
     await this.api.onNt8Heartbeat((payload) => this.applyHeartbeat(payload, 'nt8'));
     await this.api.onAccountsUpdated(() => {
       void this.refreshAccounts();
@@ -161,6 +182,9 @@ export class Store {
       this.lastBridgeEvent.set(event.message);
     });
     await this.api.onNt8Event((event) => {
+      this.lastBridgeEvent.set(event.message);
+    });
+    await this.api.onAtasEvent((event) => {
       this.lastBridgeEvent.set(event.message);
     });
   }

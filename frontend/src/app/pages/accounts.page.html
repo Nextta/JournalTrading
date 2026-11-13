@@ -4,7 +4,7 @@
       <div class="eyebrow">Conexiones</div>
       <h1>Cuentas</h1>
       <p class="text-sm muted">
-        Gestiona las cuentas de MetaTrader 5 y NinjaTrader 8, y el estado de los puentes locales.
+        Gestiona las cuentas de MetaTrader 5, NinjaTrader 8 y ATAS X, y el estado de los puentes locales.
       </p>
     </div>
     <div class="head-actions">
@@ -137,6 +137,48 @@
     </section>
   }
 
+  @if (store.atas(); as atas) {
+    <section class="card bridge-card atas-card" [class.online]="store.atasConnected()">
+      <div class="bridge-head">
+        <div class="bridge-title">
+          <span class="status-dot" [class.online]="store.atasConnected()"></span>
+          <div>
+            <h2>ATAS X</h2>
+            <p>
+              @if (store.atasConnected()) {
+                Leyendo la base de datos local · {{ timeAgo(atas.lastHeartbeatAt) }}
+                {{ store.atasIndicatorConnected() ? '· indicador conectado' : '· sin indicador (opcional)' }}
+              } @else {
+                {{ atas.error || 'Esperando a la base de datos de ATAS X' }}
+              }
+            </p>
+          </div>
+        </div>
+        <div class="bridge-actions">
+          <a mat-button routerLink="/ajustes">
+            <mat-icon>settings</mat-icon>
+            Configurar
+          </a>
+        </div>
+      </div>
+
+      <div class="bridge-grid">
+        <div>
+          <span>Fuente</span>
+          <strong>Base de datos local</strong>
+        </div>
+        <div>
+          <span>Indicador</span>
+          <strong>{{ atas.eaVersion || '—' }}</strong>
+        </div>
+        <div>
+          <span>Última lectura</span>
+          <strong>{{ formatDateTime(atas.lastHeartbeatAt) }}</strong>
+        </div>
+      </div>
+    </section>
+  }
+
   @if (store.pendingAccounts().length) {
     <section class="pending-section">
       <div class="section-head">
@@ -152,11 +194,15 @@
               <span class="avatar">{{ accountInitials(account) }}</span>
               <div class="account-title">
                 <h3>{{ account.displayName }}</h3>
-                <p>{{ account.login }} · {{ account.server }}</p>
+                <p>{{ account.provider === 'atas' ? account.server : account.login + ' · ' + account.server }}</p>
               </div>
               <span class="pill pending">Pendiente</span>
-              <span class="pill provider-pill" [class.nt8]="account.provider === 'ninjatrader'">
-                {{ account.provider === 'ninjatrader' ? 'NT8' : 'MT5' }}
+              <span
+                class="pill provider-pill"
+                [class.nt8]="account.provider === 'ninjatrader'"
+                [class.atas]="account.provider === 'atas'"
+              >
+                {{ providerShort(account.provider) }}
               </span>
             </div>
             <p class="pending-note">
@@ -194,13 +240,17 @@
               <span class="avatar">{{ accountInitials(account) }}</span>
               <div class="account-title">
                 <h3>{{ account.displayName }}</h3>
-                <p>{{ account.login }} · {{ account.server }} · {{ account.currency }}</p>
+                <p>{{ account.provider === 'atas' ? account.server : account.login + ' · ' + account.server }} · {{ account.currency }}</p>
               </div>
               @if (account.id === store.activeAccount()?.id) {
                 <span class="pill accent-pill">Activa</span>
               }
-              <span class="pill provider-pill" [class.nt8]="account.provider === 'ninjatrader'">
-                {{ account.provider === 'ninjatrader' ? 'NT8' : 'MT5' }}
+              <span
+                class="pill provider-pill"
+                [class.nt8]="account.provider === 'ninjatrader'"
+                [class.atas]="account.provider === 'atas'"
+              >
+                {{ providerShort(account.provider) }}
               </span>
             </div>
 
@@ -241,7 +291,7 @@
         <span class="material-symbols-outlined">account_balance_wallet</span>
         <h3>Sin cuentas activas</h3>
         <p>
-          Añade una cuenta manualmente o conecta el EA de MetaTrader 5 o el AddOn de NinjaTrader 8
+          Añade una cuenta manualmente o conecta el EA de MetaTrader 5, el AddOn de NinjaTrader 8 o ATAS X
           para detectarla automáticamente.
         </p>
         <button mat-flat-button color="primary" (click)="create()">
@@ -267,11 +317,15 @@
               <span class="avatar">{{ accountInitials(account) }}</span>
               <div class="account-title">
                 <h3>{{ account.displayName }}</h3>
-                <p>{{ account.login }} · {{ account.server }}</p>
+                <p>{{ account.provider === 'atas' ? account.server : account.login + ' · ' + account.server }}</p>
               </div>
               <span class="pill">Archivada</span>
-              <span class="pill provider-pill" [class.nt8]="account.provider === 'ninjatrader'">
-                {{ account.provider === 'ninjatrader' ? 'NT8' : 'MT5' }}
+              <span
+                class="pill provider-pill"
+                [class.nt8]="account.provider === 'ninjatrader'"
+                [class.atas]="account.provider === 'atas'"
+              >
+                {{ providerShort(account.provider) }}
               </span>
             </div>
           </article>

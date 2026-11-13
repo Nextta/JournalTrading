@@ -6,6 +6,7 @@ use tauri::async_runtime::JoinHandle;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{Mutex, RwLock};
 
+use crate::atas::AtasRuntime;
 use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::models::BridgeStatus;
@@ -20,11 +21,13 @@ pub struct AppState {
     pub data_dir: PathBuf,
     pub api_key: Arc<RwLock<String>>,
     pub bridge: Arc<BridgeServerManager>,
+    pub atas: Arc<AtasRuntime>,
 }
 
 pub struct BridgeServerManager {
     pub mt5: RwLock<BridgeStatus>,
     pub nt8: RwLock<BridgeStatus>,
+    pub atas: RwLock<BridgeStatus>,
     pub handle: Mutex<Option<JoinHandle<()>>>,
 }
 
@@ -53,6 +56,7 @@ impl AppState {
             ..BridgeStatus::default()
         };
         let nt8_status = mt5_status.clone();
+        let atas_status = mt5_status.clone();
 
         Ok(Self {
             app: app.clone(),
@@ -62,8 +66,10 @@ impl AppState {
             bridge: Arc::new(BridgeServerManager {
                 mt5: RwLock::new(mt5_status),
                 nt8: RwLock::new(nt8_status),
+                atas: RwLock::new(atas_status),
                 handle: Mutex::new(None),
             }),
+            atas: Arc::new(AtasRuntime::default()),
         })
     }
 
@@ -81,6 +87,7 @@ impl AppState {
             reset_status(&mut mt5, port);
             let mut nt8 = self.bridge.nt8.write().await;
             reset_status(&mut nt8, port);
+            self.bridge.atas.write().await.port = port;
         }
 
         let listener = match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
@@ -157,6 +164,10 @@ impl AppState {
 
     pub async fn nt8_status(&self) -> BridgeStatus {
         self.bridge.nt8.read().await.clone()
+    }
+
+    pub async fn atas_status(&self) -> BridgeStatus {
+        self.bridge.atas.read().await.clone()
     }
 
     pub async fn set_api_key(&self, value: String) {

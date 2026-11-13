@@ -1,12 +1,16 @@
 use std::path::Path;
 use std::time::Duration;
 
+use sha2::{Digest, Sha384};
+use sqlx::migrate::Migrator;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::error::AppResult;
 use crate::util::now_iso;
+
+static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 
 pub async fn init_db(path: &Path) -> AppResult<SqlitePool> {
     let options = SqliteConnectOptions::new()
@@ -22,8 +26,54 @@ pub async fn init_db(path: &Path) -> AppResult<SqlitePool> {
         .connect_with(options)
         .await?;
 
-    sqlx::migrate!("./migrations").run(&pool).await?;
+    repair_line_ending_checksums(&pool).await?;
+    MIGRATOR.run(&pool).await?;
     Ok(pool)
+}
+
+/// sqlx compara el checksum de los bytes del archivo .sql. Si git convierte los
+/// fines de línea (LF <-> CRLF) tras aplicar una migración, el contenido es el
+/// mismo pero el checksum cambia y la app no arranca. Aquí se actualiza el
+/// checksum guardado solo cuando la única diferencia son los fines de línea.
+async fn repair_line_ending_checksums(pool: &SqlitePool) -> AppResult<()> {
+    let table: Option<String> = sqlx::query_scalar(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = '_sqlx_migrations'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    if table.is_none() {
+        return Ok(());
+    }
+
+    let rows = sqlx::query("SELECT version, checksum FROM _sqlx_migrations")
+        .fetch_all(pool)
+        .await?;
+    for row in rows {
+        let version: i64 = row.get("version");
+        let stored: Vec<u8> = row.get("checksum");
+        let Some(migration) = MIGRATOR
+            .iter()
+            .find(|m| m.version == version && !m.migration_type.is_down_migration())
+        else {
+            continue;
+        };
+        if stored.as_slice() == migration.checksum.as_ref() {
+            continue;
+        }
+        let lf = migration.sql.as_str().replace("\r\n", "\n");
+        let crlf = lf.replace('\n', "\r\n");
+        let same_content = [lf, crlf]
+            .iter()
+            .any(|variant| Sha384::digest(variant.as_bytes())[..] == stored[..]);
+        if same_content {
+            sqlx::query("UPDATE _sqlx_migrations SET checksum = ? WHERE version = ?")
+                .bind(migration.checksum.as_ref())
+                .bind(version)
+                .execute(pool)
+                .await?;
+        }
+    }
+    Ok(())
 }
 
 pub async fn ensure_default_settings(pool: &SqlitePool) -> AppResult<()> {
@@ -138,4 +188,36 @@ pub async fn insert_snapshot(
         .await?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn accepts_migrations_applied_with_other_line_endings() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("pool");
+        MIGRATOR.run(&pool).await.expect("first run");
+
+        let migration = MIGRATOR.iter().next().expect("migration");
+        let crlf = migration
+            .sql
+            .as_str()
+            .replace("\r\n", "\n")
+            .replace('\n', "\r\n");
+        sqlx::query("UPDATE _sqlx_migrations SET checksum = ? WHERE version = ?")
+            .bind(Sha384::digest(crlf.as_bytes()).to_vec())
+            .bind(migration.version)
+            .execute(&pool)
+            .await
+            .expect("tamper");
+        assert!(MIGRATOR.run(&pool).await.is_err());
+
+        repair_line_ending_checksums(&pool).await.expect("repair");
+        MIGRATOR.run(&pool).await.expect("run after repair");
+    }
 }

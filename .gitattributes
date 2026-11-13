@@ -1,0 +1,2 @@
+# Las migraciones se verifican por checksum de bytes: mantener siempre LF.
+backend/migrations/*.sql text eol=lf

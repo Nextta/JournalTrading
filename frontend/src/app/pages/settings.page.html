@@ -101,11 +101,53 @@
 
       <section class="card settings-card">
         <div class="card-header">
+          <div class="card-title"><span class="material-symbols-outlined">monitoring</span>ATAS X</div>
+          @if (store.atasIndicatorConnected()) {
+            <span class="pill accent-pill">Indicador conectado</span>
+          } @else if (store.atasConnected()) {
+            <span class="pill accent-pill">Leyendo base de datos</span>
+          } @else {
+            <span class="pill">Sin datos</span>
+          }
+        </div>
+        <div class="settings-body">
+          <p class="text-xs muted help">
+            La app lee el historial de todas las cuentas de ATAS desde su base de datos local, sin
+            plugins. El indicador <strong>JournalTrading Bridge</strong> es opcional: añade datos en
+            tiempo real y velas para los gráficos. Las cuentas que ATAS recibe a través de
+            NinjaTrader 8 se omiten porque ya las sincroniza el AddOn de NT8.
+          </p>
+
+          <div class="nt8-config">
+            <span>Base de datos de ATAS</span>
+            <code>{{ settings.atasDbPath || 'No detectada' }}</code>
+          </div>
+
+          <div class="nt8-config">
+            <span>Carpeta de indicadores</span>
+            <code>{{ settings.atasIndicatorsPath || 'No detectada' }}</code>
+          </div>
+
+          <div class="settings-actions">
+            <button mat-stroked-button (click)="openAtasFolder()">
+              <mat-icon>folder_open</mat-icon>
+              Abrir carpeta de indicadores
+            </button>
+            <button mat-flat-button color="primary" [disabled]="writingAtas()" (click)="configureAtas()">
+              <mat-icon>settings_suggest</mat-icon>
+              {{ writingAtas() ? 'Escribiendo…' : 'Escribir configuración ATAS' }}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card settings-card">
+        <div class="card-header">
           <div class="card-title"><span class="material-symbols-outlined">key</span>Seguridad</div>
         </div>
         <div class="settings-body">
           <p class="text-xs muted help">
-            El EA de MT5 y el AddOn de NT8 deben enviar esta clave en la cabecera
+            El EA de MT5, el AddOn de NT8 y el indicador de ATAS deben enviar esta clave en la cabecera
             <code>X-Api-Key</code>. No la compartas fuera de tu equipo.
           </p>
 

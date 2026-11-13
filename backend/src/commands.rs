@@ -82,6 +82,36 @@ async fn write_nt8_config_file(state: &AppState, force: bool) -> AppResult<Optio
     Ok(Some(path.to_string_lossy().to_string()))
 }
 
+fn atas_config_path() -> Option<PathBuf> {
+    crate::atas::atas_indicators_dir().and_then(|dir| {
+        dir.parent()
+            .map(|parent| parent.join("JournalTradingBridge.json"))
+    })
+}
+
+async fn write_atas_config_file(state: &AppState, force: bool) -> AppResult<Option<String>> {
+    let Some(path) = atas_config_path() else {
+        if force {
+            return Err(AppError::NotFound(
+                "No se encontró la carpeta de datos de ATAS X. Abre ATAS una vez.".into(),
+            ));
+        }
+        return Ok(None);
+    };
+    if !force && !path.is_file() {
+        return Ok(None);
+    }
+    let api_port = db::get_api_port(&state.db).await?;
+    let config = serde_json::json!({
+        "apiUrl": format!("http://127.0.0.1:{api_port}"),
+        "apiKey": state.current_api_key().await,
+    });
+    let contents = serde_json::to_string_pretty(&config)
+        .map_err(|error| AppError::Internal(error.to_string()))?;
+    tokio::fs::write(&path, contents).await?;
+    Ok(Some(path.to_string_lossy().to_string()))
+}
+
 async fn settings_response(state: &AppState) -> AppResult<SettingsResponse> {
     let api_key = state.current_api_key().await;
     let api_port = db::get_api_port(&state.db).await?;
@@ -99,6 +129,10 @@ async fn settings_response(state: &AppState) -> AppResult<SettingsResponse> {
         mt5: state.status().await,
         nt8: state.nt8_status().await,
         nt8_config_path: nt8_config_path().map(|path| path.to_string_lossy().to_string()),
+        atas: state.atas_status().await,
+        atas_db_path: crate::atas::atas_db_dir().map(|path| path.to_string_lossy().to_string()),
+        atas_indicators_path: crate::atas::atas_indicators_dir()
+            .map(|path| path.to_string_lossy().to_string()),
     })
 }
 
@@ -1228,8 +1262,13 @@ pub async fn request_trade_series(
 
 #[tauri::command]
 pub async fn request_sync(account_id: String, state: State<'_, AppState>) -> AppResult<String> {
-    services::load_account(&state.db, &account_id).await?;
+    let account = services::load_account(&state.db, &account_id).await?;
     let id = new_id();
+    if account.provider == "atas" {
+        // ATAS se lee de su base de datos local: basta con forzar una relectura completa.
+        state.atas.request_full_sync().await;
+        return Ok(id);
+    }
     let now = now_iso();
     // 24800 días (~68 años) cubren todo el historial disponible sin desbordar
     // el cálculo de segundos de versiones antiguas del EA (int de 32 bits).
@@ -1293,6 +1332,7 @@ pub async fn update_settings(
     db::set_setting(&state.db, "api_port", &input.api_port.to_string()).await?;
     db::set_setting(&state.db, "timezone_mode", &input.timezone_mode).await?;
     let _ = write_nt8_config_file(&state, false).await;
+    let _ = write_atas_config_file(&state, false).await;
     if old_port != input.api_port {
         state.start_server(app).await?;
     }
@@ -1309,6 +1349,7 @@ pub async fn regenerate_api_key(state: State<'_, AppState>) -> AppResult<String>
     db::set_setting(&state.db, "api_key", &key).await?;
     state.set_api_key(key.clone()).await;
     let _ = write_nt8_config_file(&state, false).await;
+    let _ = write_atas_config_file(&state, false).await;
     Ok(key)
 }
 
@@ -1346,6 +1387,42 @@ pub async fn write_nt8_config(state: State<'_, AppState>) -> AppResult<String> {
                 .into(),
         )
     })
+}
+
+#[tauri::command]
+pub async fn write_atas_config(state: State<'_, AppState>) -> AppResult<String> {
+    write_atas_config_file(&state, true).await?.ok_or_else(|| {
+        AppError::NotFound(
+            "No se encontró la carpeta de datos de ATAS X. Abre ATAS una vez.".into(),
+        )
+    })
+}
+
+#[tauri::command]
+pub async fn get_atas_status(state: State<'_, AppState>) -> AppResult<crate::models::BridgeStatus> {
+    Ok(state.atas_status().await)
+}
+
+#[tauri::command]
+pub async fn open_atas_indicators_folder() -> AppResult<()> {
+    let Some(dir) = crate::atas::atas_indicators_dir() else {
+        return Err(AppError::NotFound(
+            "No se encontró la carpeta Indicators de ATAS X (%APPDATA%\\ATAS X\\Indicators)."
+                .into(),
+        ));
+    };
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(&dir)
+            .spawn()
+            .map_err(AppError::from)?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = &dir;
+    }
+    Ok(())
 }
 
 #[tauri::command]
