@@ -33,6 +33,11 @@ export const routes: Routes = [
     data: { title: 'Grupos de activos' },
   },
   {
+    path: 'copy-trading',
+    loadComponent: () => import('./pages/copy.page').then((m) => m.CopyPage),
+    data: { title: 'Copy trading' },
+  },
+  {
     path: 'cuentas',
     loadComponent: () => import('./pages/accounts.page').then((m) => m.AccountsPage),
     data: { title: 'Cuentas' },

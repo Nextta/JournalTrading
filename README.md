@@ -13,8 +13,9 @@ Diario de trading de escritorio para Windows con sincronización desde MetaTrade
 - **Cuentas**: soporte multi-cuenta, activación, archivo y aprobación de cuentas nuevas detectadas por el EA.
 - **Ajustes**: API key, puerto local, zona horaria, carpeta de datos y copias de seguridad.
 - **Integración MT5**: captura todas las operaciones de la cuenta, sin filtrar por número mágico.
-- **Integración NinjaTrader 8**: AddOn de solo lectura que sincroniza cuentas, ejecuciones, posiciones abiertas y velas bajo demanda.
+- **Integración NinjaTrader 8**: AddOn que sincroniza cuentas, ejecuciones, posiciones abiertas y velas bajo demanda.
 - **Integración ATAS X**: lectura directa del historial completo de todas las cuentas desde la base de datos local de ATAS, más un indicador opcional para tiempo real y velas.
+- **Copy trading**: copia en tiempo real las operaciones de una cuenta principal a varias secundarias en MT5, NinjaTrader 8 y ATAS X, con gestión del tamaño y protecciones por cuenta.
 
 ## Arquitectura
 
@@ -100,7 +101,7 @@ npm run build
 Artefactos generados:
 
 - Ejecutable: `backend\target\release\journal-trading.exe`
-- Instalador: `backend\target\release\bundle\nsis\JournalTrading_0.1.3_x64-setup.exe`
+- Instalador: `backend\target\release\bundle\nsis\JournalTrading_0.1.5_x64-setup.exe`
 
 También puedes compilar únicamente el frontend:
 
@@ -126,6 +127,9 @@ npm run build:web
 | `InpSyncSeconds` | `15` | Frecuencia de sincronización |
 | `InpHistoryDays` | `0` | Días de historial en la primera sincronización (`0` = todo el historial) |
 | `InpVerbose` | `true` | Logs detallados en MT5 |
+| `InpCopyTrading` | `true` | Permite el copy trading (el rol de la cuenta se asigna en la app) |
+| `InpCopyMagic` | `7744001` | Número mágico de las operaciones copiadas |
+| `InpCopyPollMs` | `150` | Cada cuántos ms consulta la secundaria si hay órdenes que copiar |
 
 6. La primera vez, la cuenta aparecerá en estado **pendiente** en la sección **Cuentas**. Actívala para empezar a usarla.
 
@@ -139,10 +143,10 @@ Notas:
 
 ## Conexión con NinjaTrader 8
 
-La integración con NT8 es de **solo lectura**: sincroniza cuentas, ejecuciones, posiciones abiertas y velas, pero no envía órdenes.
+El AddOn sincroniza cuentas, ejecuciones, posiciones abiertas y velas. Solo envía órdenes en las cuentas que la app marca como secundarias de un grupo de [copy trading](#copy-trading).
 
 1. Cierra NinjaTrader 8.
-2. Instala el AddOn desde PowerShell:
+2. En JournalTrading, ve a **Ajustes > Puente NinjaTrader 8** y pulsa **Instalar AddOn NT8**. La app ejecuta el instalador en segundo plano, escribe la configuración con la API key y el puerto actuales y muestra el resultado con la salida completa. También puedes instalarlo desde PowerShell:
 
    ```powershell
    .\tools\install-nt8-bridge.ps1
@@ -164,6 +168,7 @@ Configuración (`Documents\NinjaTrader 8\bin\Custom\JournalTradingBridge.json`):
 | `syncSeconds` | `15` | Frecuencia de sincronización |
 | `historyDays` | `0` | Días de historial inicial (`0` = todo el historial de NT8) |
 | `verbose` | `true` | Logs en la pestaña Output de NT8 |
+| `copyTrading` | `true` | Permite el copy trading (el rol de cada cuenta se asigna en la app) |
 
 Notas:
 
@@ -185,8 +190,8 @@ La integración con ATAS es de **solo lectura** y tiene dos partes:
 
 Instalación del indicador:
 
-1. Abre JournalTrading y pulsa **Ajustes > ATAS X > Escribir configuración ATAS**. Se genera `%APPDATA%\ATAS X\JournalTradingBridge.json` con la API key y el puerto.
-2. Compila e instala el indicador:
+1. Cierra ATAS y pulsa **Ajustes > ATAS X > Instalar AddOn ATAS**. La app compila el indicador, lo copia a `%APPDATA%\ATAS X\Indicators` y genera `%APPDATA%\ATAS X\JournalTradingBridge.json` con la API key y el puerto. Necesita el SDK de .NET 10.
+2. Si lo prefieres, hazlo a mano: pulsa **Escribir configuración ATAS** y compila e instala el indicador:
 
    ```powershell
    .\tools\install-atas-bridge.ps1
@@ -205,6 +210,53 @@ Notas:
 - Las posiciones que solo aparecen en `Position.cdb` y no tienen ejecuciones (por ejemplo, acciones antiguas de IBKR) no se importan como operaciones.
 - El botón **Sincronizar** fuerza una relectura completa de la base de datos de ATAS.
 - Sin el indicador, los gráficos de las operaciones de ATAS no tienen velas.
+
+## Copy trading
+
+Copia las operaciones de una **cuenta principal** a una o varias **cuentas secundarias**. La app hace de intermediario: el bridge de la principal envía cada acción a la app, la app calcula el tamaño de cada secundaria y el bridge de cada secundaria ejecuta la orden. Se usa el mismo EA, AddOn e indicador del diario: el rol de cada cuenta se asigna en la página **Copy trading**.
+
+### Qué se copia
+
+- Entradas, ampliaciones, cierres parciales (misma proporción) y cierres.
+- Stop loss y take profit, y sus modificaciones.
+- Órdenes pendientes (limit, stop y stop-limit): alta, modificación, cancelación y ejecución.
+- Futuros entre MT5, NinjaTrader 8 y ATAS. CFD y Forex solo entre cuentas de MT5. Una principal no se copia a una plataforma que no pueda operar ese mercado.
+- Mini, micro y nano de la misma familia (NQ ↔ MNQ, ES ↔ MES…), ajustando el tamaño por el valor del punto.
+- Lo que ya estaba abierto al activar la copia **no** se copia. Las operaciones manuales de las secundarias no se tocan: la copia solo gestiona lo que abrió ella (comentario `JT…`, número mágico en MT5).
+
+### Gestión del tamaño (por secundaria)
+
+| Método | Futuros | CFD/Forex | Cálculo |
+| --- | :---: | :---: | --- |
+| Mismo tamaño (por defecto) | ✔ | ✔ | Igual que la principal |
+| Tamaño fijo | ✔ | ✔ | El indicado |
+| Multiplicador | ✔ | ✔ | Principal × multiplicador |
+| % de riesgo sobre balance | | ✔ | (Balance × %) / pérdida por lote hasta el SL |
+| % de riesgo sobre equity | | ✔ | Igual, con la equity |
+| Kelly | | ✔ | `f = W − (1 − W) / R` con las últimas N operaciones de la principal × fracción, limitado al riesgo máximo |
+| Fórmula nocional | | ✔ | `(Balance / (Precio × contract size)) × multiplicador` |
+
+Si un método de riesgo no se puede aplicar (operación sin SL, historial con menos de 20 operaciones…), se usa el método de respaldo. El resultado se redondea hacia abajo al paso de volumen del bróker.
+
+### Protecciones
+
+- Tamaño máximo por operación y de posición abierta.
+- Pérdida diaria máxima: al alcanzarla se pausa la cuenta (y, si se elige, se cierra lo copiado).
+- Filtro de símbolos (solo estos / todos menos estos) y franja horaria con días.
+- Entrada tardía: si la secundaria recibe la orden más de *X* segundos tarde o con el precio a más de *X* ticks/pips, no entra. Los cierres siempre se aplican.
+- Interruptores global, por grupo y por cuenta. Al pausar, lo copiado se deja abierto salvo que se indique lo contrario.
+- **Botón de pánico**: cierra todo lo copiado, cancela las pendientes copiadas y pausa la copia.
+
+### Puesta en marcha
+
+1. Actualiza los bridges: EA de MT5 `1.2.0`, AddOn de NT8 `1.2.0` e indicador de ATAS `1.1.0`. Los dos últimos se instalan con los botones **Instalar AddOn NT8** e **Instalar AddOn ATAS** de **Ajustes**.
+2. **MT5**: adjunta el EA en cada terminal (principal y secundarias) con el botón **Algo Trading** activo y WebRequest permitido para `http://127.0.0.1:4477`. Las secundarias necesitan además **Permitir trading algorítmico** en las propiedades del EA.
+3. **NinjaTrader 8**: el AddOn atiende todas las cuentas conectadas; no hay que hacer nada más.
+4. **ATAS**: ATAS solo deja operar el instrumento y la cuenta de cada gráfico. En cada cuenta secundaria abre un gráfico por instrumento que quieras copiar y añade el indicador **JournalTrading Bridge**. En la principal basta un gráfico por instrumento operado.
+5. En la app, ve a **Copy trading**, crea un grupo, elige la cuenta principal, añade las secundarias y configura cada una.
+6. Activa el grupo y el interruptor **Copia activa**. El registro en vivo muestra cada orden con su tamaño, precio, slippage, latencia y el motivo si se ha saltado.
+
+Prueba siempre primero con cuentas demo o de simulación.
 
 ## Simulador MT5
 
@@ -296,6 +348,9 @@ El backend expone una API HTTP en `127.0.0.1:4477` (configurable). Todas las rut
 | `POST` | `/api/v1/atas/series` | Velas solicitadas por la app |
 | `POST` | `/api/v1/atas/events` | Eventos y logs del indicador |
 | `POST` | `/api/v1/atas/commands/result` | Resultado de un comando |
+| `POST` | `/api/v1/copy/poll` | Copy trading: rol de cada cuenta y órdenes pendientes de copiar (long-polling) |
+| `POST` | `/api/v1/copy/signal` | Copy trading: acciones de la cuenta principal |
+| `POST` | `/api/v1/copy/result` | Copy trading: resultado de las órdenes copiadas |
 
 Comprobación rápida:
 
@@ -313,6 +368,7 @@ JournalTrading/
 │  │  ├─ commands.rs         Comandos Tauri
 │  │  ├─ mt5.rs              API HTTP, ingesta y cola de comandos (MT5, NT8 y ATAS)
 │  │  ├─ atas.rs             Lector de la base de datos de ATAS e indicador
+│  │  ├─ copy/               Copy trading: motor, tamaños, símbolos, API y comandos
 │  │  ├─ stats.rs            Cálculo de estadísticas
 │  │  ├─ services.rs         Lógica de diario, activos e imágenes
 │  │  ├─ db.rs               Conexión, migraciones y ajustes

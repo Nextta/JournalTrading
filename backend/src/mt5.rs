@@ -51,7 +51,7 @@ fn provider_label(provider: &str) -> &'static str {
     }
 }
 
-fn normalize_server(provider: &str, server: &str) -> String {
+pub(crate) fn normalize_server(provider: &str, server: &str) -> String {
     let server = server.trim();
     if provider == PROVIDER_ATAS {
         return if server.is_empty() {
@@ -89,6 +89,9 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/atas/series", post(atas_series))
         .route("/api/v1/atas/events", post(atas_events))
         .route("/api/v1/atas/commands/result", post(command_result))
+        .route("/api/v1/copy/poll", post(crate::copy::poll))
+        .route("/api/v1/copy/signal", post(crate::copy::signal))
+        .route("/api/v1/copy/result", post(crate::copy::result))
         .layer(DefaultBodyLimit::max(64 * 1024 * 1024))
         .with_state(state)
 }

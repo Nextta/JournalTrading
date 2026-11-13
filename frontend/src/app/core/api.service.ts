@@ -10,12 +10,20 @@ import {
   AssetGroup,
   AssetGroupInput,
   Bootstrap,
+  CopyLogEntry,
+  CopyOverview,
+  CopyToggleOptions,
+  FollowerSettings,
+  SizePreview,
+  SizePreviewInput,
+  SymbolMapRow,
   DayAsset,
   DayJournal,
   DayView,
   ExistingAssetAction,
   ImageInfo,
   ImageSaveInput,
+  InstallResult,
   Mt5Status,
   PerformanceCalendar,
   PlanItem,
@@ -300,12 +308,98 @@ export class ApiService {
     return this.call('open_atas_indicators_folder');
   }
 
+  installNt8Bridge(): Promise<InstallResult> {
+    return this.call('install_nt8_bridge');
+  }
+
+  installAtasBridge(): Promise<InstallResult> {
+    return this.call('install_atas_bridge');
+  }
+
   openDataDir(): Promise<void> {
     return this.call('open_data_dir');
   }
 
   createBackup(): Promise<string> {
     return this.call('create_backup');
+  }
+
+  // --- Copy trading -------------------------------------------------------
+
+  getCopyOverview(): Promise<CopyOverview> {
+    return this.call('get_copy_overview');
+  }
+
+  createCopyGroup(name: string, masterAccountId: string): Promise<string> {
+    return this.call('create_copy_group', { name, masterAccountId });
+  }
+
+  updateCopyGroup(id: string, name: string, masterAccountId: string): Promise<void> {
+    return this.call('update_copy_group', { id, name, masterAccountId });
+  }
+
+  deleteCopyGroup(id: string): Promise<void> {
+    return this.call('delete_copy_group', { id });
+  }
+
+  setCopyEnabled(enabled: boolean, options: CopyToggleOptions | null = null): Promise<void> {
+    return this.call('set_copy_enabled', { enabled, options });
+  }
+
+  setCopyGroupEnabled(
+    id: string,
+    enabled: boolean,
+    options: CopyToggleOptions | null = null,
+  ): Promise<void> {
+    return this.call('set_copy_group_enabled', { id, enabled, options });
+  }
+
+  addCopyFollower(groupId: string, accountId: string): Promise<string> {
+    return this.call('add_copy_follower', { groupId, accountId });
+  }
+
+  removeCopyFollower(id: string): Promise<void> {
+    return this.call('remove_copy_follower', { id });
+  }
+
+  updateCopyFollower(
+    id: string,
+    settings: FollowerSettings,
+    symbolMap: SymbolMapRow[],
+  ): Promise<void> {
+    return this.call('update_copy_follower', { id, settings, symbolMap });
+  }
+
+  setCopyFollowerEnabled(
+    id: string,
+    enabled: boolean,
+    options: CopyToggleOptions | null = null,
+  ): Promise<void> {
+    return this.call('set_copy_follower_enabled', { id, enabled, options });
+  }
+
+  resumeCopyFollower(id: string): Promise<void> {
+    return this.call('resume_copy_follower', { id });
+  }
+
+  copyPanic(groupId: string | null = null): Promise<number> {
+    return this.call('copy_panic', { groupId });
+  }
+
+  listCopyLog(groupId: string | null = null, limit = 100): Promise<CopyLogEntry[]> {
+    return this.call('list_copy_log', { groupId, limit });
+  }
+
+  previewCopySize(input: SizePreviewInput): Promise<SizePreview> {
+    return this.call('preview_copy_size', { input });
+  }
+
+  onCopyUpdated(handler: () => void): Promise<UnlistenFn> {
+    return this.listenEvent('copy://updated', () => handler());
+  }
+
+  onCopyActivity(handler: () => void): Promise<UnlistenFn> {
+    return this.listenEvent('copy://activity', () => handler());
   }
 
   private listenEvent<T>(event: string, handler: (payload: T) => void): Promise<UnlistenFn> {

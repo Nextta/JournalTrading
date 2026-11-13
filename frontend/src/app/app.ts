@@ -53,6 +53,7 @@ export class App {
     { label: 'Estadísticas', icon: 'insights', route: '/estadisticas' },
     { label: 'Estrategias', icon: 'rule', route: '/estrategias' },
     { label: 'Grupos', icon: 'workspaces', route: '/grupos' },
+    { label: 'Copy trading', icon: 'content_copy', route: '/copy-trading' },
     { label: 'Cuentas', icon: 'account_balance_wallet', route: '/cuentas' },
     { label: 'Ajustes', icon: 'tune', route: '/ajustes' },
   ];

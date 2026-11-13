@@ -1,0 +1,299 @@
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.global-toggle {
+  margin-right: 4px;
+  font-size: 12.5px;
+}
+
+.panic-btn {
+  --mdc-outlined-button-label-text-color: var(--neg);
+  --mdc-outlined-button-outline-color: rgba(242, 102, 111, 0.45);
+}
+
+.page-progress {
+  margin: -4px 0 12px;
+  border-radius: 999px;
+}
+
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid rgba(245, 184, 75, 0.3);
+  border-radius: var(--radius);
+  background: rgba(245, 184, 75, 0.08);
+  color: #f7d79c;
+  font-size: 12.5px;
+  line-height: 1.5;
+
+  .material-symbols-outlined {
+    color: var(--warning);
+    font-size: 20px;
+  }
+}
+
+.copy-kpis {
+  margin-bottom: 16px;
+}
+
+.group-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 18px;
+  transition: border-color 140ms ease, opacity 140ms ease;
+
+  &.paused {
+    border-style: dashed;
+  }
+}
+
+.group-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.group-title {
+  min-width: 0;
+  flex: 1;
+
+  h3 {
+    font-size: 16px;
+    letter-spacing: -0.02em;
+  }
+}
+
+.master-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+}
+
+.group-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.role-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+
+  &.master {
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  &.follower {
+    color: var(--info);
+    background: rgba(92, 200, 255, 0.12);
+  }
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--muted-2);
+  flex: none;
+  vertical-align: middle;
+
+  &.online {
+    background: var(--pos);
+    box-shadow: 0 0 0 3px var(--pos-soft);
+  }
+}
+
+.warn-text {
+  color: var(--warning);
+}
+
+.followers {
+  td {
+    vertical-align: top;
+  }
+}
+
+.account-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+
+  .dot {
+    margin-top: 5px;
+  }
+
+  > div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+}
+
+.compat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--warning);
+
+  .material-symbols-outlined {
+    font-size: 14px;
+  }
+}
+
+.flags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.pill.small {
+  padding: 1px 7px;
+  font-size: 10.5px;
+}
+
+.num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.state {
+  display: inline-flex;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+  color: var(--muted);
+  background: var(--surface-3);
+
+  &[data-tone='on'],
+  &[data-tone='ok'] {
+    color: var(--pos);
+    background: var(--pos-soft);
+  }
+
+  &[data-tone='warn'] {
+    color: var(--warning);
+    background: rgba(245, 184, 75, 0.12);
+  }
+
+  &[data-tone='bad'] {
+    color: var(--neg);
+    background: var(--neg-soft);
+  }
+
+  &[data-tone='wait'] {
+    color: var(--info);
+    background: rgba(92, 200, 255, 0.12);
+  }
+}
+
+.paused-reason,
+.log-error {
+  margin-top: 4px;
+  max-width: 260px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.actions-col {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.small-btn {
+  height: 30px;
+  font-size: 12px;
+}
+
+.no-followers {
+  padding: 4px 2px;
+}
+
+.group-foot {
+  display: flex;
+  gap: 8px;
+}
+
+section.card {
+  margin-bottom: 16px;
+}
+
+.log-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.log td {
+  vertical-align: top;
+}
+
+.side {
+  margin-left: 4px;
+  font-size: 11px;
+  font-weight: 650;
+
+  &[data-side='buy'] {
+    color: var(--pos);
+  }
+
+  &[data-side='sell'] {
+    color: var(--neg);
+  }
+}
+
+.log-empty {
+  padding: 14px 18px 18px;
+}
+
+@media (max-width: 720px) {
+  .head-actions {
+    margin-left: 0;
+  }
+
+  .group-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+}

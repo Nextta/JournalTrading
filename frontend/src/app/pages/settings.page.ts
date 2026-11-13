@@ -17,13 +17,14 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../core/api.service';
-import type { SettingsResponse } from '../core/models';
+import type { InstallResult, SettingsResponse } from '../core/models';
 import { NotificationsService } from '../core/notifications.service';
 import { Store } from '../core/store';
 import {
   ConfirmDialogComponent,
   type ConfirmDialogResult,
 } from '../shared/confirm-dialog.component';
+import { InstallResultDialogComponent } from './install-result.dialog';
 
 @Component({
   selector: 'app-settings-page',
@@ -53,6 +54,7 @@ export class SettingsPage {
   protected readonly backingUp = signal(false);
   protected readonly writingNt8 = signal(false);
   protected readonly writingAtas = signal(false);
+  protected readonly installing = signal<'nt8' | 'atas' | null>(null);
   protected readonly showKey = signal(false);
   protected port = 4477;
   protected timezoneMode: 'broker' | 'local' = 'broker';
@@ -189,6 +191,26 @@ export class SettingsPage {
       this.notifications.error(error);
     } finally {
       this.writingAtas.set(false);
+    }
+  }
+
+  protected async installBridge(target: 'nt8' | 'atas'): Promise<void> {
+    if (this.installing()) return;
+    this.installing.set(target);
+    const title = target === 'nt8' ? 'Instalar AddOn de NinjaTrader 8' : 'Instalar AddOn de ATAS';
+    try {
+      const result: InstallResult =
+        target === 'nt8' ? await this.api.installNt8Bridge() : await this.api.installAtasBridge();
+      await this.store.refreshSettings();
+      this.dialog.open(InstallResultDialogComponent, {
+        data: { title, result },
+        width: '620px',
+        maxWidth: '94vw',
+      });
+    } catch (error) {
+      this.notifications.error(error);
+    } finally {
+      this.installing.set(null);
     }
   }
 

@@ -1,0 +1,287 @@
+<div class="dialog-title">
+  <span class="material-symbols-outlined">tune</span>
+  <span>Configurar {{ data.account?.displayName ?? 'cuenta secundaria' }}</span>
+</div>
+
+<mat-dialog-content class="dialog-body">
+  <p class="intro text-sm muted">
+    Copia de
+    <strong>{{ data.master?.displayName ?? 'la principal' }}</strong>
+    ({{ providerShort(data.master?.provider) }}) a
+    <strong>{{ data.account?.displayName }}</strong>
+    ({{ providerShort(data.account?.provider) }}).
+    @if (futuresOnly) {
+      Esta plataforma solo copia futuros: los métodos de riesgo, Kelly y la fórmula nocional son de
+      CFD/Forex.
+    }
+  </p>
+
+  <!-- Gestión del tamaño -->
+  <section class="block">
+    <h4>Gestión del tamaño</h4>
+    <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full">
+      <mat-label>Método</mat-label>
+      <mat-select [(ngModel)]="settings.sizing.mode">
+        @for (mode of modes; track mode.value) {
+          <mat-option [value]="mode.value" [disabled]="futuresOnly && mode.cfdOnly">
+            {{ mode.label }}{{ mode.cfdOnly ? ' · CFD/Forex' : '' }}
+          </mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+    <p class="hint">{{ modeHint() }}</p>
+
+    <div class="fields">
+      @switch (settings.sizing.mode) {
+        @case ('fixed') {
+          <mat-form-field appearance="outline" subscriptSizing="dynamic">
+            <mat-label>{{ futuresOnly ? 'Contratos' : 'Lotes' }}</mat-label>
+            <input matInput type="number" min="0" step="0.01" [(ngModel)]="settings.sizing.fixedVolume" />
+          </mat-form-field>
+        }
+        @case ('multiplier') {
+          <mat-form-field appearance="outline" subscriptSizing="dynamic">
+            <mat-label>Multiplicador</mat-label>
+            <input matInput type="number" min="0" step="0.1" [(ngModel)]="settings.sizing.multiplier" />
+          </mat-form-field>
+        }
+        @case ('risk_balance') {
+          <mat-form-field appearance="outline" subscriptSizing="dynamic">
+            <mat-label>% de riesgo</mat-label>
+            <input matInput type="number" min="0" step="0.1" [(ngModel)]="settings.sizing.riskPercent" />
+          </mat-form-field>
+        }
+        @case ('risk_equity') {
+          <mat-form-field appearance="outline" subscriptSizing="dynamic">
+            <mat-label>% de riesgo</mat-label>
+            <input matInput type="number" min="0" step="0.1" [(ngModel)]="settings.sizing.riskPercent" />
+          </mat-form-field>
+        }
+        @case ('kelly') {
+          <mat-form-field appearance="outline" subscriptSizing="dynamic">
+            <mat-label>Fracción de Kelly</mat-label>
+            <input matInput type="number" min="0" max="1" step="0.05" [(ngModel)]="settings.sizing.kellyFraction" />
+          </mat-form-field>
+          <mat-form-field appearance="outline" subscriptSizing="dynamic">
+            <mat-label>Riesgo máximo (%)</mat-label>
+            <input matInput type="number" min="0" step="0.1" [(ngModel)]="settings.sizing.kellyMaxRiskPercent" />
+          </mat-form-field>
+          <mat-form-field appearance="outline" subscriptSizing="dynamic">
+            <mat-label>Operaciones del historial</mat-label>
+            <input matInput type="number" min="20" step="5" [(ngModel)]="settings.sizing.kellyLookback" />
+          </mat-form-field>
+        }
+        @case ('notional') {
+          <mat-form-field appearance="outline" subscriptSizing="dynamic">
+            <mat-label>Multiplicador</mat-label>
+            <input matInput type="number" min="0" step="0.1" [(ngModel)]="settings.sizing.notionalMultiplier" />
+          </mat-form-field>
+        }
+      }
+      @if (modeIsCfd()) {
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="wide">
+          <mat-label>Método de respaldo (sin SL o sin datos)</mat-label>
+          <mat-select [(ngModel)]="settings.sizing.fallbackMode">
+            @for (mode of simpleModes(); track mode.value) {
+              <mat-option [value]="mode.value">{{ mode.label }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+        @if (settings.sizing.fallbackMode === 'fixed') {
+          <mat-form-field appearance="outline" subscriptSizing="dynamic">
+            <mat-label>Lotes de respaldo</mat-label>
+            <input matInput type="number" min="0" step="0.01" [(ngModel)]="settings.sizing.fixedVolume" />
+          </mat-form-field>
+        }
+        @if (settings.sizing.fallbackMode === 'multiplier') {
+          <mat-form-field appearance="outline" subscriptSizing="dynamic">
+            <mat-label>Multiplicador de respaldo</mat-label>
+            <input matInput type="number" min="0" step="0.1" [(ngModel)]="settings.sizing.multiplier" />
+          </mat-form-field>
+        }
+      }
+    </div>
+
+    <mat-slide-toggle [(ngModel)]="settings.familyScaling">
+      Ajustar entre mini, micro y nano por el valor del punto (1 NQ → 10 MNQ)
+    </mat-slide-toggle>
+  </section>
+
+  <!-- Qué se copia -->
+  <section class="block">
+    <h4>Qué se copia</h4>
+    <div class="toggles">
+      <mat-slide-toggle [(ngModel)]="settings.copySltp">Copiar stop loss y take profit</mat-slide-toggle>
+      <mat-slide-toggle [(ngModel)]="settings.copyPending">Copiar órdenes pendientes</mat-slide-toggle>
+      <mat-slide-toggle [(ngModel)]="settings.invert">
+        Invertir dirección (compra → venta; SL y TP se intercambian)
+      </mat-slide-toggle>
+    </div>
+  </section>
+
+  <!-- Protecciones -->
+  <section class="block">
+    <h4>Protecciones</h4>
+    <div class="fields">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Máximo por operación</mat-label>
+        <input matInput type="number" min="0" step="0.01" [(ngModel)]="settings.maxVolumePerTrade" placeholder="Sin límite" />
+      </mat-form-field>
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Máximo de posición abierta</mat-label>
+        <input matInput type="number" min="0" step="0.01" [(ngModel)]="settings.maxPositionVolume" placeholder="Sin límite" />
+      </mat-form-field>
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Pérdida diaria máxima ({{ data.account?.currency ?? 'USD' }})</mat-label>
+        <input matInput type="number" min="0" step="10" [(ngModel)]="settings.dailyLossLimit" placeholder="Sin límite" />
+      </mat-form-field>
+    </div>
+    @if (settings.dailyLossLimit) {
+      <mat-checkbox [(ngModel)]="settings.closeOnDailyLoss">
+        Al alcanzar la pérdida diaria, cerrar también lo copiado (si no, solo se pausa)
+      </mat-checkbox>
+    }
+    <div class="fields">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Retraso máximo de entrada (s)</mat-label>
+        <input matInput type="number" min="1" step="1" [(ngModel)]="settings.maxDelaySeconds" />
+      </mat-form-field>
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Desviación máxima ({{ futuresOnly ? 'ticks' : 'ticks / pips' }})</mat-label>
+        <input matInput type="number" min="0" step="1" [(ngModel)]="settings.maxDeviation" />
+      </mat-form-field>
+    </div>
+    <p class="hint">
+      Si la secundaria recibe la orden más tarde o con el precio más lejos de lo indicado, no entra.
+      Los cierres y cancelaciones se aplican siempre.
+    </p>
+  </section>
+
+  <!-- Filtros -->
+  <section class="block">
+    <h4>Filtro de símbolos y horario</h4>
+    <div class="fields">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Símbolos</mat-label>
+        <mat-select [(ngModel)]="settings.symbolFilterMode">
+          <mat-option value="all">Copiar todos</mat-option>
+          <mat-option value="include">Solo estos</mat-option>
+          <mat-option value="exclude">Todos menos estos</mat-option>
+        </mat-select>
+      </mat-form-field>
+      @if (settings.symbolFilterMode !== 'all') {
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="wide">
+          <mat-label>Lista (separada por comas)</mat-label>
+          <input matInput [(ngModel)]="symbolsText" placeholder="NQ, ES, EURUSD" />
+        </mat-form-field>
+      }
+    </div>
+    <p class="hint">Una raíz de futuros (NQ) incluye todos sus vencimientos.</p>
+
+    <mat-slide-toggle [(ngModel)]="settings.scheduleEnabled">Copiar solo en una franja horaria</mat-slide-toggle>
+    @if (settings.scheduleEnabled) {
+      <div class="fields schedule">
+        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+          <mat-label>Desde</mat-label>
+          <input matInput type="time" [(ngModel)]="settings.scheduleStart" />
+        </mat-form-field>
+        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+          <mat-label>Hasta</mat-label>
+          <input matInput type="time" [(ngModel)]="settings.scheduleEnd" />
+        </mat-form-field>
+        <div class="days" role="group" aria-label="Días">
+          @for (day of days; track day.value) {
+            <button
+              type="button"
+              class="day"
+              [class.selected]="settings.scheduleDays.includes(day.value)"
+              (click)="toggleDay(day.value)"
+            >
+              {{ day.label }}
+            </button>
+          }
+        </div>
+      </div>
+      <p class="hint">Hora local de este equipo. Fuera de la franja no se abre nada, pero los cierres sí se copian.</p>
+    }
+  </section>
+
+  <!-- Equivalencias -->
+  <section class="block">
+    <h4>Equivalencias de símbolos</h4>
+    <p class="hint">
+      Los futuros se emparejan solos entre plataformas (NQZ6@CME = NQ 12-26 = NQZ26). Añade una fila
+      para sufijos de bróker (EURUSD → EURUSD.m) o para copiar a otra familia (NQ → MNQ). El ajuste de
+      volumen es opcional; si lo dejas vacío se calcula por el valor del punto.
+    </p>
+    @for (row of symbolMap; track $index; let i = $index) {
+      <div class="map-row">
+        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+          <mat-label>En la principal</mat-label>
+          <input matInput [(ngModel)]="row.masterSymbol" placeholder="NQ o EURUSD" />
+        </mat-form-field>
+        <span class="material-symbols-outlined arrow">arrow_forward</span>
+        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+          <mat-label>En esta cuenta</mat-label>
+          <input matInput [(ngModel)]="row.followerSymbol" placeholder="MNQ o EURUSD.m" />
+        </mat-form-field>
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="ratio">
+          <mat-label>× volumen</mat-label>
+          <input matInput type="number" min="0" step="0.1" [(ngModel)]="row.volumeRatio" placeholder="auto" />
+        </mat-form-field>
+        <button mat-icon-button matTooltip="Quitar" (click)="removeMapRow(i)">
+          <mat-icon>delete_outline</mat-icon>
+        </button>
+      </div>
+    }
+    <button mat-stroked-button class="add-row" (click)="addMapRow()">
+      <mat-icon>add</mat-icon>
+      Añadir equivalencia
+    </button>
+  </section>
+
+  <!-- Vista previa -->
+  <section class="block preview">
+    <h4>Vista previa</h4>
+    <p class="hint">Calcula, sin enviar nada, qué abriría esta cuenta con una operación de ejemplo.</p>
+    <div class="fields">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Símbolo en la principal</mat-label>
+        <input matInput [(ngModel)]="previewSymbol" placeholder="EURUSD o NQ 12-26" />
+      </mat-form-field>
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Tamaño en la principal</mat-label>
+        <input matInput type="number" min="0" step="0.01" [(ngModel)]="previewVolume" />
+      </mat-form-field>
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Precio</mat-label>
+        <input matInput type="number" min="0" [(ngModel)]="previewPrice" />
+      </mat-form-field>
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Stop loss</mat-label>
+        <input matInput type="number" min="0" [(ngModel)]="previewStop" placeholder="Opcional" />
+      </mat-form-field>
+    </div>
+    <div class="preview-row">
+      <button mat-stroked-button (click)="runPreview()">
+        <mat-icon>calculate</mat-icon>
+        Calcular
+      </button>
+      @if (preview(); as result) {
+        <span class="preview-result" [class.ok]="result.ok">
+          {{ previewText(result) }}
+          @if (result.ok && result.message) {
+            <span class="muted"> {{ result.message }}</span>
+          }
+        </span>
+      }
+    </div>
+  </section>
+</mat-dialog-content>
+
+<div class="dialog-actions">
+  <button mat-button (click)="close()">Cancelar</button>
+  <button mat-flat-button color="primary" [disabled]="saving()" (click)="save()">
+    {{ saving() ? 'Guardando…' : 'Guardar' }}
+  </button>
+</div>

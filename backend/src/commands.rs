@@ -53,7 +53,7 @@ fn nt8_config_path() -> Option<PathBuf> {
     nt8_custom_dir().map(|dir| dir.join("JournalTradingBridge.json"))
 }
 
-async fn write_nt8_config_file(state: &AppState, force: bool) -> AppResult<Option<String>> {
+pub(crate) async fn write_nt8_config_file(state: &AppState, force: bool) -> AppResult<Option<String>> {
     let Some(path) = nt8_config_path() else {
         if force {
             return Err(AppError::NotFound(
@@ -89,7 +89,7 @@ fn atas_config_path() -> Option<PathBuf> {
     })
 }
 
-async fn write_atas_config_file(state: &AppState, force: bool) -> AppResult<Option<String>> {
+pub(crate) async fn write_atas_config_file(state: &AppState, force: bool) -> AppResult<Option<String>> {
     let Some(path) = atas_config_path() else {
         if force {
             return Err(AppError::NotFound(

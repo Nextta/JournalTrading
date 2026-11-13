@@ -14,7 +14,7 @@ using Utils.Common.Logging;
 namespace ATAS.Indicators.Custom
 {
     /// <summary>
-    /// Puente de solo lectura entre ATAS X y JournalTrading.
+    /// Puente entre ATAS X y JournalTrading.
     ///
     /// JournalTrading ya lee el historial completo de la base de datos local de ATAS. Este
     /// indicador es opcional y añade:
@@ -23,13 +23,15 @@ namespace ATAS.Indicators.Custom
     ///   - Velas: atiende las peticiones de velas de la app (M1...W1) para cualquier instrumento
     ///     usando el proveedor de velas de ATAS.
     ///
-    /// No envía órdenes ni modifica posiciones. Solo se conecta a 127.0.0.1.
+    ///   - Copy trading: como cuenta principal envía sus operaciones a la app y como secundaria
+    ///     ejecuta las copias (ver JournalTradingBridge.Copy.cs). Solo envía órdenes cuando la app
+    ///     asigna a la cuenta el rol de secundaria. Solo se conecta a 127.0.0.1.
     /// </summary>
     [DisplayName("JournalTrading Bridge")]
     [Category("JournalTrading")]
-    public class JournalTradingBridge : Indicator
+    public partial class JournalTradingBridge : Indicator
     {
-        private const string Version = "1.0.0";
+        private const string Version = "1.1.0";
         private const string ConfigFileName = "JournalTradingBridge.json";
 
         private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(60) };
@@ -74,6 +76,7 @@ namespace ATAS.Indicators.Custom
                 SubscribeToTimer(TimeSpan.FromSeconds(Math.Max(2, IntervalSeconds)), OnTimer);
                 timerSubscribed = true;
             }
+            StartCopyTrading();
             Log("JournalTrading Bridge " + Version + " iniciado.");
         }
 
@@ -83,6 +86,7 @@ namespace ATAS.Indicators.Custom
 
         protected override void OnDispose()
         {
+            StopCopyTrading();
             if (timerSubscribed)
             {
                 UnsubscribeFromTimer(TimeSpan.FromSeconds(Math.Max(2, IntervalSeconds)), OnTimer);

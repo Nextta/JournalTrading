@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "JournalTrading",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "identifier": "com.jairo.journaltrading",
   "build": {
     "frontendDist": "../frontend/dist/frontend/browser",
@@ -41,6 +41,14 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "resources": {
+      "../tools/install-nt8-bridge.ps1": "bridges/tools/install-nt8-bridge.ps1",
+      "../tools/install-atas-bridge.ps1": "bridges/tools/install-atas-bridge.ps1",
+      "../nt8/JournalTradingBridge.cs": "bridges/nt8/JournalTradingBridge.cs",
+      "../atas/JournalTradingBridge/JournalTradingBridge.csproj": "bridges/atas/JournalTradingBridge/JournalTradingBridge.csproj",
+      "../atas/JournalTradingBridge/JournalTradingBridge.cs": "bridges/atas/JournalTradingBridge/JournalTradingBridge.cs",
+      "../atas/JournalTradingBridge/JournalTradingBridge.Copy.cs": "bridges/atas/JournalTradingBridge/JournalTradingBridge.Copy.cs"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

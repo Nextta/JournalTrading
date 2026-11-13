@@ -23,15 +23,16 @@ using NinjaTrader.NinjaScript;
 namespace NinjaTrader.NinjaScript.AddOns
 {
     /// <summary>
-    /// AddOn de solo lectura que sincroniza cuentas, ejecuciones y velas con
-    /// JournalTrading a través de la API HTTP local (127.0.0.1).
+    /// AddOn que sincroniza cuentas, ejecuciones y velas con JournalTrading a
+    /// través de la API HTTP local (127.0.0.1). Solo envía órdenes cuando la app
+    /// asigna a una cuenta el rol de secundaria en un grupo de copy trading.
     ///
     /// Configuración: Documents\NinjaTrader 8\bin\Custom\JournalTradingBridge.json
     /// La app puede generar ese archivo desde Ajustes > Puente NinjaTrader 8.
     /// </summary>
     public class JournalTradingBridge : AddOnBase
     {
-        private const string AddOnVersion = "1.1.0";
+        private const string AddOnVersion = "1.2.0";
         private const int IncrementalDays = 7;
         private static readonly DateTime HistoryEpoch = new DateTime(2000, 1, 1);
         private const string ConfigFileName = "JournalTradingBridge.json";
@@ -80,9 +81,11 @@ namespace NinjaTrader.NinjaScript.AddOns
                 ReloadConfig(true);
                 Print("JournalTrading Bridge " + AddOnVersion + " iniciado.");
                 timer = new Timer(OnTimer, null, 1000, 1000);
+                StartCopyTrading();
             }
             else if (State == State.Terminated || State == State.Finalized)
             {
+                StopCopyTrading();
                 if (timer != null)
                 {
                     timer.Dispose();
@@ -1523,6 +1526,1182 @@ namespace NinjaTrader.NinjaScript.AddOns
         }
 
         // -------------------------------------------------------------------
+        // Copy trading
+        //
+        // Principal: cada 100 ms compara posiciones y órdenes de las cuentas
+        // con rol principal y envía los cambios a /api/v1/copy/signal.
+        // Secundaria: recoge sus órdenes con /api/v1/copy/poll (long-polling),
+        // las ejecuta y devuelve el resultado a /api/v1/copy/result.
+        // Lo copiado se identifica por el nombre de la orden ("JT…:E", ":SL"…)
+        // y se lleva la cuenta del volumen copiado por etiqueta, de modo que
+        // las operaciones manuales no se tocan.
+        // -------------------------------------------------------------------
+
+        private const string CopyStateFileName = "JournalTradingCopyState.json";
+        private readonly object copyLock = new object();
+        private readonly Dictionary<string, CopyTrack> copyTracks = new Dictionary<string, CopyTrack>();
+        private readonly Dictionary<long, string> copyRoles = new Dictionary<long, string>();
+        private readonly Dictionary<long, bool> copyEnabled = new Dictionary<long, bool>();
+        private readonly Dictionary<long, MasterState> masterStates = new Dictionary<long, MasterState>();
+        private readonly Dictionary<Order, string> orderRefs = new Dictionary<Order, string>(new ReferenceComparer<Order>());
+        private CancellationTokenSource copyCts;
+        private Timer copyTimer;
+        private int copyMasterBusy;
+        private long orderRefSeq;
+
+        private static string CopyStatePath
+        {
+            get { return Path.Combine(NinjaTrader.Core.Globals.UserDataDir, "bin", "Custom", CopyStateFileName); }
+        }
+
+        private void StartCopyTrading()
+        {
+            StopCopyTrading();
+            LoadCopyState();
+            copyCts = new CancellationTokenSource();
+            CancellationToken token = copyCts.Token;
+            Task.Run(() => CopyLoopAsync(token));
+            copyTimer = new Timer(OnCopyTimer, null, 1000, 100);
+        }
+
+        private void StopCopyTrading()
+        {
+            if (copyTimer != null)
+            {
+                copyTimer.Dispose();
+                copyTimer = null;
+            }
+            if (copyCts != null)
+            {
+                try { copyCts.Cancel(); } catch { }
+                copyCts = null;
+            }
+        }
+
+        private string RoleOf(Account account)
+        {
+            lock (copyLock)
+            {
+                string role;
+                return copyRoles.TryGetValue(account.Id, out role) ? role : "none";
+            }
+        }
+
+        private bool CopyActive(Account account)
+        {
+            lock (copyLock)
+            {
+                bool enabled;
+                return copyEnabled.TryGetValue(account.Id, out enabled) && enabled;
+            }
+        }
+
+        // --- Bucle de consulta ------------------------------------------------
+
+        private async Task CopyLoopAsync(CancellationToken token)
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    if (!config.CopyTrading || string.IsNullOrWhiteSpace(config.ApiKey))
+                    {
+                        await Task.Delay(2000, token).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    List<Account> accounts = SnapshotAccounts();
+                    bool anyFollower = false;
+                    List<object> items = new List<object>();
+                    foreach (Account account in accounts)
+                    {
+                        Currency currency = account.Denomination;
+                        Dictionary<string, object> item = new Dictionary<string, object>
+                        {
+                            { "login", account.Id },
+                            { "server", ConnectionName(account) },
+                            { "balance", SafeAccountValue(account, AccountItem.CashValue, currency) },
+                            { "equity", SafeAccountValue(account, AccountItem.NetLiquidation, currency) }
+                        };
+                        if (RoleOf(account) == "follower")
+                        {
+                            anyFollower = true;
+                            item["copies"] = BuildCopies(account);
+                        }
+                        items.Add(item);
+                    }
+
+                    Dictionary<string, object> payload = new Dictionary<string, object>
+                    {
+                        { "provider", "nt8" },
+                        { "bridge_version", AddOnVersion },
+                        { "wait_ms", anyFollower ? 1000 : 0 },
+                        { "accounts", items }
+                    };
+                    Dictionary<string, object> response = await PostAsync("/api/v1/copy/poll", payload).ConfigureAwait(false);
+                    if (response == null)
+                    {
+                        await Task.Delay(2000, token).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    List<Dictionary<string, object>> results = new List<Dictionary<string, object>>();
+                    foreach (Dictionary<string, object> entry in GetList(response, "accounts"))
+                    {
+                        long login = GetLong(entry, "login", 0);
+                        string role = GetString(entry, "role");
+                        bool enabled = GetBool(entry, "enabled", false);
+                        Account account = accounts.FirstOrDefault(a => a.Id == login);
+                        if (account == null)
+                            continue;
+                        UpdateRole(account, string.IsNullOrEmpty(role) ? "none" : role, enabled);
+                        if (role != "follower")
+                            continue;
+                        foreach (Dictionary<string, object> order in GetList(entry, "orders"))
+                        {
+                            Dictionary<string, object> result = await ExecuteCopyOrderAsync(account, order).ConfigureAwait(false);
+                            if (result != null)
+                                results.Add(result);
+                        }
+                    }
+
+                    if (results.Count > 0)
+                    {
+                        await PostAsync("/api/v1/copy/result", new Dictionary<string, object> { { "results", results } })
+                            .ConfigureAwait(false);
+                        SaveCopyState();
+                    }
+
+                    if (!anyFollower)
+                        await Task.Delay(1000, token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    LogThrottled("Copy trading: " + ex.Message);
+                    try { await Task.Delay(2000, token).ConfigureAwait(false); } catch { return; }
+                }
+            }
+        }
+
+        private void UpdateRole(Account account, string role, bool enabled)
+        {
+            bool changed;
+            lock (copyLock)
+            {
+                string previousRole;
+                bool previousEnabled;
+                copyRoles.TryGetValue(account.Id, out previousRole);
+                copyEnabled.TryGetValue(account.Id, out previousEnabled);
+                changed = previousRole != role || previousEnabled != enabled;
+                copyRoles[account.Id] = role;
+                copyEnabled[account.Id] = enabled;
+                if (changed && role == "master" && enabled)
+                    masterStates.Remove(account.Id);
+            }
+            if (changed)
+                Log("Copy trading · " + account.Name + " · rol " + role + (enabled ? " · activo" : " · pausado"));
+        }
+
+        // --- Principal ----------------------------------------------------------
+
+        private void OnCopyTimer(object state)
+        {
+            if (!config.CopyTrading || Interlocked.CompareExchange(ref copyMasterBusy, 1, 0) != 0)
+                return;
+            Task.Run(async () =>
+            {
+                try
+                {
+                    foreach (Account account in SnapshotAccounts())
+                    {
+                        if (RoleOf(account) != "master" || !CopyActive(account))
+                            continue;
+                        List<Dictionary<string, object>> signals = DiffMaster(account);
+                        if (signals.Count == 0)
+                            continue;
+                        Dictionary<string, object> payload = new Dictionary<string, object>
+                        {
+                            { "provider", "nt8" },
+                            { "login", account.Id },
+                            { "server", ConnectionName(account) },
+                            { "signals", signals }
+                        };
+                        await PostAsync("/api/v1/copy/signal", payload).ConfigureAwait(false);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogThrottled("Copy trading (principal): " + ex.Message);
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref copyMasterBusy, 0);
+                }
+            });
+        }
+
+        private static bool IsBuyAction(OrderAction action)
+        {
+            return action == OrderAction.Buy || action == OrderAction.BuyToCover;
+        }
+
+        private static string MarketOf(Instrument instrument)
+        {
+            try
+            {
+                switch (instrument.MasterInstrument.InstrumentType)
+                {
+                    case InstrumentType.Future:
+                        return "futures";
+                    case InstrumentType.Forex:
+                    case InstrumentType.Cfd:
+                        return "cfd_forex";
+                }
+            }
+            catch { }
+            return "other";
+        }
+
+        private string RefOf(Order order)
+        {
+            lock (copyLock)
+            {
+                string value;
+                if (!orderRefs.TryGetValue(order, out value))
+                {
+                    value = "NT" + Interlocked.Increment(ref orderRefSeq).ToString(CultureInfo.InvariantCulture)
+                        + "-" + DateTime.UtcNow.Ticks.ToString("x", CultureInfo.InvariantCulture);
+                    orderRefs[order] = value;
+                }
+                return value;
+            }
+        }
+
+        private MasterSnapshot TakeMasterSnapshot(Account account)
+        {
+            MasterSnapshot snapshot = new MasterSnapshot();
+            Action action = () =>
+            {
+                foreach (Position position in account.Positions)
+                {
+                    if (position == null || position.Instrument == null || position.MarketPosition == MarketPosition.Flat)
+                        continue;
+                    snapshot.Positions[position.Instrument.FullName] = new PosSnap
+                    {
+                        Instrument = position.Instrument,
+                        Side = position.MarketPosition == MarketPosition.Long ? 1 : -1,
+                        Quantity = position.Quantity,
+                        AveragePrice = position.AveragePrice
+                    };
+                }
+
+                foreach (Order order in account.Orders)
+                {
+                    if (order == null || order.Instrument == null || !IsWorking(order) || order.OrderType == OrderType.Market)
+                        continue;
+                    string key = order.Instrument.FullName;
+                    int remaining = order.Quantity - order.Filled;
+                    bool buy = IsBuyAction(order.OrderAction);
+                    PosSnap position;
+                    bool protective = snapshot.Positions.TryGetValue(key, out position)
+                        && buy != (position.Side > 0)
+                        && remaining <= position.Quantity;
+                    if (protective)
+                    {
+                        if (order.OrderType == OrderType.StopMarket || order.OrderType == OrderType.StopLimit)
+                        {
+                            double stop = order.StopPrice;
+                            if (position.StopLoss == 0 || (position.Side > 0 ? stop > position.StopLoss : stop < position.StopLoss))
+                                position.StopLoss = stop;
+                        }
+                        else if (order.OrderType == OrderType.Limit || order.OrderType == OrderType.MIT)
+                        {
+                            double target = order.OrderType == OrderType.Limit ? order.LimitPrice : order.StopPrice;
+                            if (position.TakeProfit == 0 || (position.Side > 0 ? target < position.TakeProfit : target > position.TakeProfit))
+                                position.TakeProfit = target;
+                        }
+                        continue;
+                    }
+
+                    string type;
+                    double price;
+                    double stopLimit = 0;
+                    switch (order.OrderType)
+                    {
+                        case OrderType.Limit:
+                            type = "limit";
+                            price = order.LimitPrice;
+                            break;
+                        case OrderType.StopMarket:
+                            type = "stop";
+                            price = order.StopPrice;
+                            break;
+                        case OrderType.StopLimit:
+                            type = "stop_limit";
+                            price = order.StopPrice;
+                            stopLimit = order.LimitPrice;
+                            break;
+                        default:
+                            continue;
+                    }
+                    snapshot.Orders[RefOf(order)] = new OrdSnap
+                    {
+                        Order = order,
+                        Instrument = order.Instrument,
+                        Side = buy ? "buy" : "sell",
+                        Type = type,
+                        Quantity = remaining,
+                        Price = price,
+                        StopLimit = stopLimit
+                    };
+                }
+            };
+            RunOnMainThread(action);
+            return snapshot;
+        }
+
+        private List<Dictionary<string, object>> DiffMaster(Account account)
+        {
+            List<Dictionary<string, object>> signals = new List<Dictionary<string, object>>();
+            MasterSnapshot current = TakeMasterSnapshot(account);
+            MasterSnapshot previous;
+            lock (copyLock)
+            {
+                MasterState state;
+                if (!masterStates.TryGetValue(account.Id, out state))
+                {
+                    // Lo que ya estaba abierto al activar la copia no se copia.
+                    masterStates[account.Id] = new MasterState { Snapshot = current };
+                    return signals;
+                }
+                previous = state.Snapshot;
+                state.Snapshot = current;
+            }
+
+            // Pendientes que han desaparecido: ejecutadas o canceladas.
+            Dictionary<string, string> filledByInstrument = new Dictionary<string, string>();
+            foreach (KeyValuePair<string, OrdSnap> pair in previous.Orders)
+            {
+                if (current.Orders.ContainsKey(pair.Key))
+                    continue;
+                OrderState state = pair.Value.Order.OrderState;
+                if (state == OrderState.Filled || state == OrderState.PartFilled)
+                    filledByInstrument[pair.Value.Instrument.FullName] = pair.Key;
+                else
+                    signals.Add(OrderSignal("pending_cancel", pair.Key, pair.Value));
+            }
+
+            foreach (KeyValuePair<string, PosSnap> pair in current.Positions)
+            {
+                PosSnap now = pair.Value;
+                PosSnap before;
+                string orderRef;
+                filledByInstrument.TryGetValue(pair.Key, out orderRef);
+                if (!previous.Positions.TryGetValue(pair.Key, out before))
+                {
+                    signals.Add(PositionSignal("open", pair.Key, now, now.Quantity, now.Quantity, now.AveragePrice, orderRef));
+                    continue;
+                }
+                if (before.Side != now.Side)
+                {
+                    signals.Add(PositionSignal("close", pair.Key, before, before.Quantity, 0, now.AveragePrice, null));
+                    signals.Add(PositionSignal("open", pair.Key, now, now.Quantity, now.Quantity, now.AveragePrice, orderRef));
+                    continue;
+                }
+                if (now.Quantity > before.Quantity)
+                {
+                    int added = now.Quantity - before.Quantity;
+                    double fill = (now.AveragePrice * now.Quantity - before.AveragePrice * before.Quantity) / added;
+                    signals.Add(PositionSignal("increase", pair.Key, now, added, now.Quantity, fill, orderRef));
+                }
+                else if (now.Quantity < before.Quantity)
+                {
+                    signals.Add(PositionSignal("reduce", pair.Key, now, before.Quantity - now.Quantity, now.Quantity, now.AveragePrice, null));
+                }
+                if (Math.Abs(now.StopLoss - before.StopLoss) > 1e-12 || Math.Abs(now.TakeProfit - before.TakeProfit) > 1e-12)
+                    signals.Add(PositionSignal("sltp", pair.Key, now, 0, now.Quantity, now.AveragePrice, null));
+            }
+
+            foreach (KeyValuePair<string, PosSnap> pair in previous.Positions)
+            {
+                if (!current.Positions.ContainsKey(pair.Key))
+                    signals.Add(PositionSignal("close", pair.Key, pair.Value, pair.Value.Quantity, 0, pair.Value.AveragePrice, null));
+            }
+
+            foreach (KeyValuePair<string, OrdSnap> pair in current.Orders)
+            {
+                OrdSnap before;
+                if (!previous.Orders.TryGetValue(pair.Key, out before))
+                {
+                    signals.Add(OrderSignal("pending_place", pair.Key, pair.Value));
+                    continue;
+                }
+                OrdSnap now = pair.Value;
+                if (Math.Abs(now.Price - before.Price) > 1e-12 || Math.Abs(now.StopLimit - before.StopLimit) > 1e-12
+                    || now.Quantity != before.Quantity)
+                    signals.Add(OrderSignal("pending_modify", pair.Key, now));
+            }
+            return signals;
+        }
+
+        private static Dictionary<string, object> PositionSignal(
+            string kind, string key, PosSnap position, int volume, int remaining, double price, string orderRef)
+        {
+            Dictionary<string, object> signal = new Dictionary<string, object>
+            {
+                { "kind", kind },
+                { "ref", key },
+                { "symbol", key },
+                { "market", MarketOf(position.Instrument) },
+                { "side", position.Side > 0 ? "buy" : "sell" },
+                { "volume", volume },
+                { "position_volume", remaining },
+                { "price", price },
+                { "entry_price", position.AveragePrice },
+                { "sl", position.StopLoss > 0 ? (object)position.StopLoss : null },
+                { "tp", position.TakeProfit > 0 ? (object)position.TakeProfit : null }
+            };
+            if (!string.IsNullOrEmpty(orderRef))
+                signal["order_ref"] = orderRef;
+            return signal;
+        }
+
+        private static Dictionary<string, object> OrderSignal(string kind, string orderRef, OrdSnap order)
+        {
+            return new Dictionary<string, object>
+            {
+                { "kind", kind },
+                { "ref", orderRef },
+                { "order_ref", orderRef },
+                { "symbol", order.Instrument.FullName },
+                { "market", MarketOf(order.Instrument) },
+                { "side", order.Side },
+                { "order_type", order.Type },
+                { "volume", order.Quantity },
+                { "price", order.Price },
+                { "order_price", order.Price },
+                { "stop_limit_price", order.StopLimit > 0 ? (object)order.StopLimit : null }
+            };
+        }
+
+        // --- Secundaria -----------------------------------------------------------
+
+        private static string TrackKey(Account account, string tag)
+        {
+            return account.Id.ToString(CultureInfo.InvariantCulture) + "|" + tag;
+        }
+
+        private CopyTrack GetTrack(Account account, string tag)
+        {
+            lock (copyLock)
+            {
+                CopyTrack track;
+                return copyTracks.TryGetValue(TrackKey(account, tag), out track) ? track : null;
+            }
+        }
+
+        private CopyTrack EnsureTrack(Account account, string tag, Instrument instrument, int side)
+        {
+            lock (copyLock)
+            {
+                string key = TrackKey(account, tag);
+                CopyTrack track;
+                if (!copyTracks.TryGetValue(key, out track))
+                {
+                    track = new CopyTrack { AccountId = account.Id, Tag = tag };
+                    copyTracks[key] = track;
+                }
+                track.Instrument = instrument.FullName;
+                track.Side = side;
+                return track;
+            }
+        }
+
+        private void RemoveTrack(Account account, string tag)
+        {
+            lock (copyLock)
+            {
+                copyTracks.Remove(TrackKey(account, tag));
+            }
+        }
+
+        private static int NetQuantity(Account account, string instrumentName, int side)
+        {
+            int result = 0;
+            Action action = () =>
+            {
+                foreach (Position position in account.Positions)
+                {
+                    if (position.Instrument == null || position.Instrument.FullName != instrumentName)
+                        continue;
+                    if (position.MarketPosition == MarketPosition.Long && side > 0)
+                        result += position.Quantity;
+                    else if (position.MarketPosition == MarketPosition.Short && side < 0)
+                        result += position.Quantity;
+                }
+            };
+            RunOnMainThread(action);
+            return result;
+        }
+
+        private List<object> BuildCopies(Account account)
+        {
+            List<CopyTrack> tracks;
+            lock (copyLock)
+            {
+                tracks = copyTracks.Values.Where(t => t.AccountId == account.Id && t.Quantity > 0).ToList();
+            }
+            List<object> copies = new List<object>();
+            foreach (CopyTrack track in tracks)
+            {
+                // Si la posición se cerró (SL/TP, cierre manual) lo copiado no puede superar la posición real.
+                int net = NetQuantity(account, track.Instrument, track.Side);
+                int quantity = Math.Min(track.Quantity, net);
+                if (quantity != track.Quantity)
+                {
+                    lock (copyLock)
+                    {
+                        track.Quantity = quantity;
+                    }
+                    SaveCopyState();
+                }
+                copies.Add(new Dictionary<string, object> { { "tag", track.Tag }, { "volume", quantity } });
+            }
+            return copies;
+        }
+
+        private static Instrument ResolveCopyInstrument(Dictionary<string, object> order)
+        {
+            foreach (object value in GetArray(order, "symbols"))
+            {
+                string name = Convert.ToString(value, CultureInfo.InvariantCulture);
+                if (string.IsNullOrWhiteSpace(name))
+                    continue;
+                try
+                {
+                    Instrument instrument = Instrument.GetInstrument(name.Trim(), true);
+                    if (instrument != null)
+                        return instrument;
+                }
+                catch { }
+            }
+            return null;
+        }
+
+        private static Dictionary<string, object> CopyResult(
+            string id, bool ok, string status, string error, Instrument instrument,
+            double volume, double price, string orderRef)
+        {
+            Dictionary<string, object> result = new Dictionary<string, object>
+            {
+                { "order_id", id },
+                { "ok", ok },
+                { "status", status }
+            };
+            if (!string.IsNullOrEmpty(error))
+                result["error"] = error;
+            if (instrument != null)
+                result["symbol"] = instrument.FullName;
+            if (volume > 0)
+                result["volume"] = volume;
+            if (price > 0)
+                result["price"] = price;
+            if (!string.IsNullOrEmpty(orderRef))
+                result["order_ref"] = orderRef;
+            return result;
+        }
+
+        private async Task<Dictionary<string, object>> ExecuteCopyOrderAsync(Account account, Dictionary<string, object> order)
+        {
+            string id = GetString(order, "id");
+            string action = GetString(order, "action");
+            if (string.IsNullOrEmpty(id))
+                return null;
+            try
+            {
+                Instrument instrument = ResolveCopyInstrument(order);
+                if (instrument == null)
+                {
+                    string names = string.Join(", ", GetArray(order, "symbols").Select(v => Convert.ToString(v, CultureInfo.InvariantCulture)));
+                    return CopyResult(id, false, "rejected", "Instrumento no disponible en NinjaTrader: " + names, null, 0, 0, null);
+                }
+
+                switch (action)
+                {
+                    case "market":
+                        return GetBool(order, "reduce_only", false)
+                            ? await CopyReduceAsync(account, order, id, instrument, false).ConfigureAwait(false)
+                            : await CopyEntryAsync(account, order, id, instrument, GetString(order, "tag")).ConfigureAwait(false);
+                    case "close":
+                        return await CopyReduceAsync(account, order, id, instrument, true).ConfigureAwait(false);
+                    case "sltp":
+                        return CopySlTp(account, order, id, instrument);
+                    case "pending_place":
+                        return await CopyPendingPlaceAsync(account, order, id, instrument).ConfigureAwait(false);
+                    case "pending_modify":
+                        return CopyPendingModify(account, order, id, instrument);
+                    case "pending_cancel":
+                        return CopyPendingCancel(account, order, id, instrument);
+                    case "pending_fill":
+                        return await CopyPendingFillAsync(account, order, id, instrument).ConfigureAwait(false);
+                    default:
+                        return CopyResult(id, false, "rejected", "Acción desconocida: " + action, instrument, 0, 0, null);
+                }
+            }
+            catch (Exception ex)
+            {
+                return CopyResult(id, false, "rejected", ex.Message, null, 0, 0, null);
+            }
+        }
+
+        private static async Task<Order> WaitForFinalAsync(Order order, int timeoutMs, bool workingIsFinal)
+        {
+            DateTime limit = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+            while (DateTime.UtcNow < limit)
+            {
+                OrderState state = order.OrderState;
+                if (state == OrderState.Filled || state == OrderState.Rejected || state == OrderState.Cancelled)
+                    return order;
+                if (workingIsFinal && (state == OrderState.Working || state == OrderState.Accepted || state == OrderState.TriggerPending))
+                    return order;
+                await Task.Delay(25).ConfigureAwait(false);
+            }
+            return order;
+        }
+
+        private static Order SubmitOrder(
+            Account account, Instrument instrument, OrderAction action, OrderType type, TimeInForce tif,
+            int quantity, double limitPrice, double stopPrice, string oco, string name)
+        {
+            Order order = null;
+            Action submit = () =>
+            {
+                order = account.CreateOrder(instrument, action, type, OrderEntry.Automated, tif, quantity,
+                    limitPrice, stopPrice, oco ?? "", name, NinjaTrader.Core.Globals.MaxDate, null);
+                account.Submit(new[] { order });
+            };
+            RunOnMainThread(submit);
+            return order;
+        }
+
+        private static double RoundPrice(Instrument instrument, double price)
+        {
+            if (price <= 0)
+                return 0;
+            try
+            {
+                return instrument.MasterInstrument.RoundToTickSize(price);
+            }
+            catch
+            {
+                return price;
+            }
+        }
+
+        private static void ResolveSlTp(Dictionary<string, object> order, Instrument instrument, double basePrice, out double sl, out double tp)
+        {
+            if (GetString(order, "price_mode") == "offset")
+            {
+                double slOffset = GetDouble(order, "sl_offset");
+                double tpOffset = GetDouble(order, "tp_offset");
+                sl = slOffset != 0 ? basePrice + slOffset : 0;
+                tp = tpOffset != 0 ? basePrice + tpOffset : 0;
+            }
+            else
+            {
+                sl = GetDouble(order, "sl");
+                tp = GetDouble(order, "tp");
+            }
+            sl = RoundPrice(instrument, sl);
+            tp = RoundPrice(instrument, tp);
+        }
+
+        private static List<Order> FindOrders(Account account, string name, bool workingOnly)
+        {
+            List<Order> result = new List<Order>();
+            Action action = () =>
+            {
+                foreach (Order order in account.Orders)
+                {
+                    if (order != null && order.Name == name && (!workingOnly || IsWorking(order)))
+                        result.Add(order);
+                }
+            };
+            RunOnMainThread(action);
+            return result;
+        }
+
+        private static void CancelOrders(Account account, List<Order> orders)
+        {
+            if (orders.Count == 0)
+                return;
+            Action action = () => account.Cancel(orders);
+            RunOnMainThread(action);
+        }
+
+        // Coloca (o sustituye) el stop y el objetivo de lo copiado como órdenes OCO.
+        private void PlaceProtective(Account account, Instrument instrument, CopyTrack track, double sl, double tp)
+        {
+            List<Order> existing = FindOrders(account, track.Tag + ":SL", true);
+            existing.AddRange(FindOrders(account, track.Tag + ":TP", true));
+            CancelOrders(account, existing);
+            lock (copyLock)
+            {
+                track.StopLoss = sl;
+                track.TakeProfit = tp;
+            }
+            if (track.Quantity <= 0 || (sl <= 0 && tp <= 0))
+                return;
+            OrderAction exit = track.Side > 0 ? OrderAction.Sell : OrderAction.BuyToCover;
+            string oco = sl > 0 && tp > 0 ? track.Tag + "-" + DateTime.UtcNow.Ticks.ToString("x", CultureInfo.InvariantCulture) : "";
+            if (sl > 0)
+                SubmitOrder(account, instrument, exit, OrderType.StopMarket, TimeInForce.Gtc, track.Quantity, 0, sl, oco, track.Tag + ":SL");
+            if (tp > 0)
+                SubmitOrder(account, instrument, exit, OrderType.Limit, TimeInForce.Gtc, track.Quantity, tp, 0, oco, track.Tag + ":TP");
+        }
+
+        private async Task<Dictionary<string, object>> CopyEntryAsync(
+            Account account, Dictionary<string, object> order, string id, Instrument instrument, string tag)
+        {
+            string side = GetString(order, "side");
+            int quantity = (int)Math.Floor(GetDouble(order, "volume") + 1e-9);
+            if (quantity < 1)
+                return CopyResult(id, false, "skipped", "Tamaño menor que 1 contrato", instrument, 0, 0, null);
+
+            double maxDeviation = GetDouble(order, "max_deviation");
+            double reference = GetDouble(order, "reference_price");
+            double last = LastPrice(instrument);
+            double tick = TickSize(instrument);
+            if (maxDeviation > 0 && reference > 0 && last > 0 && tick > 0
+                && Math.Abs(last - reference) / tick > maxDeviation + 1e-9)
+                return CopyResult(id, false, "skipped",
+                    "Precio desviado " + (Math.Abs(last - reference) / tick).ToString("0.#", CultureInfo.InvariantCulture)
+                    + " ticks de la entrada de la principal", instrument, 0, 0, null);
+
+            OrderAction entryAction = side == "buy" ? OrderAction.Buy : OrderAction.SellShort;
+            Order submitted = SubmitOrder(account, instrument, entryAction, OrderType.Market, TimeInForce.Day, quantity, 0, 0, null, tag + ":E");
+            await WaitForFinalAsync(submitted, 15000, false).ConfigureAwait(false);
+            int filled = submitted.Filled;
+            if (filled <= 0)
+                return CopyResult(id, false, "rejected", "Orden " + submitted.OrderState, instrument, 0, 0, null);
+
+            int sideSign = side == "buy" ? 1 : -1;
+            CopyTrack track = EnsureTrack(account, tag, instrument, sideSign);
+            lock (copyLock)
+            {
+                track.Quantity += filled;
+            }
+            double sl, tp;
+            ResolveSlTp(order, instrument, submitted.AverageFillPrice, out sl, out tp);
+            if (sl <= 0 && tp <= 0)
+            {
+                sl = track.StopLoss;
+                tp = track.TakeProfit;
+            }
+            PlaceProtective(account, instrument, track, sl, tp);
+            SaveCopyState();
+            return CopyResult(id, true, "filled", null, instrument, filled, submitted.AverageFillPrice, null);
+        }
+
+        private async Task<Dictionary<string, object>> CopyReduceAsync(
+            Account account, Dictionary<string, object> order, string id, Instrument instrument, bool closeAll)
+        {
+            string tag = GetString(order, "tag");
+            CopyTrack track = GetTrack(account, tag);
+            if (track == null || track.Quantity <= 0)
+            {
+                RemoveTrack(account, tag);
+                return CopyResult(id, true, "done", "No hay nada copiado abierto", instrument, 0, 0, null);
+            }
+            int net = NetQuantity(account, track.Instrument, track.Side);
+            int requested = closeAll ? track.Quantity : (int)Math.Floor(GetDouble(order, "volume") + 1e-9);
+            int quantity = Math.Min(Math.Min(requested, track.Quantity), net);
+            if (quantity <= 0)
+            {
+                lock (copyLock)
+                {
+                    track.Quantity = Math.Min(track.Quantity, net);
+                }
+                if (track.Quantity <= 0)
+                {
+                    PlaceProtective(account, instrument, track, 0, 0);
+                    RemoveTrack(account, tag);
+                }
+                return CopyResult(id, true, "done", "La posición ya estaba cerrada", instrument, 0, 0, null);
+            }
+
+            OrderAction exit = track.Side > 0 ? OrderAction.Sell : OrderAction.BuyToCover;
+            Order submitted = SubmitOrder(account, instrument, exit, OrderType.Market, TimeInForce.Day, quantity, 0, 0, null, tag + ":X");
+            await WaitForFinalAsync(submitted, 15000, false).ConfigureAwait(false);
+            int filled = submitted.Filled;
+            if (filled <= 0)
+                return CopyResult(id, false, "rejected", "Orden " + submitted.OrderState, instrument, 0, 0, null);
+
+            lock (copyLock)
+            {
+                track.Quantity = Math.Max(0, track.Quantity - filled);
+            }
+            if (track.Quantity <= 0)
+            {
+                PlaceProtective(account, instrument, track, 0, 0);
+                RemoveTrack(account, tag);
+            }
+            else
+            {
+                PlaceProtective(account, instrument, track, track.StopLoss, track.TakeProfit);
+            }
+            SaveCopyState();
+            return CopyResult(id, true, "filled", null, instrument, filled, submitted.AverageFillPrice, null);
+        }
+
+        private Dictionary<string, object> CopySlTp(Account account, Dictionary<string, object> order, string id, Instrument instrument)
+        {
+            CopyTrack track = GetTrack(account, GetString(order, "tag"));
+            if (track == null || track.Quantity <= 0)
+                return CopyResult(id, true, "done", "No hay nada copiado abierto", instrument, 0, 0, null);
+            double average = AveragePrice(account, instrument, track.Side);
+            double sl, tp;
+            ResolveSlTp(order, instrument, average, out sl, out tp);
+            PlaceProtective(account, instrument, track, sl, tp);
+            SaveCopyState();
+            return CopyResult(id, true, "done", null, instrument, 0, 0, null);
+        }
+
+        private async Task<Dictionary<string, object>> CopyPendingPlaceAsync(
+            Account account, Dictionary<string, object> order, string id, Instrument instrument)
+        {
+            if (GetString(order, "price_mode") == "offset")
+                return CopyResult(id, false, "rejected", "NinjaTrader solo copia pendientes con precio absoluto (futuros)", instrument, 0, 0, null);
+            string tag = GetString(order, "tag");
+            string side = GetString(order, "side");
+            int quantity = (int)Math.Floor(GetDouble(order, "volume") + 1e-9);
+            if (quantity < 1)
+                return CopyResult(id, false, "skipped", "Tamaño menor que 1 contrato", instrument, 0, 0, null);
+
+            string type = GetString(order, "order_type");
+            double price = RoundPrice(instrument, GetDouble(order, "price"));
+            double stopLimit = RoundPrice(instrument, GetDouble(order, "stop_limit_price"));
+            OrderType orderType;
+            double limitPrice = 0;
+            double stopPrice = 0;
+            if (type == "stop")
+            {
+                orderType = OrderType.StopMarket;
+                stopPrice = price;
+            }
+            else if (type == "stop_limit")
+            {
+                orderType = OrderType.StopLimit;
+                stopPrice = price;
+                limitPrice = stopLimit > 0 ? stopLimit : price;
+            }
+            else
+            {
+                orderType = OrderType.Limit;
+                limitPrice = price;
+            }
+
+            OrderAction action = side == "buy" ? OrderAction.Buy : OrderAction.SellShort;
+            Order submitted = SubmitOrder(account, instrument, action, orderType, TimeInForce.Gtc, quantity, limitPrice, stopPrice, null, tag + ":P");
+            await WaitForFinalAsync(submitted, 5000, true).ConfigureAwait(false);
+            if (submitted.OrderState == OrderState.Rejected || submitted.OrderState == OrderState.Cancelled)
+                return CopyResult(id, false, "rejected", "Orden " + submitted.OrderState, instrument, 0, 0, null);
+
+            CopyTrack track = EnsureTrack(account, tag, instrument, side == "buy" ? 1 : -1);
+            double sl, tp;
+            ResolveSlTp(order, instrument, price, out sl, out tp);
+            lock (copyLock)
+            {
+                track.StopLoss = sl;
+                track.TakeProfit = tp;
+            }
+            SaveCopyState();
+            return CopyResult(id, true, "placed", null, instrument, quantity, price, submitted.OrderId);
+        }
+
+        private Dictionary<string, object> CopyPendingModify(Account account, Dictionary<string, object> order, string id, Instrument instrument)
+        {
+            string tag = GetString(order, "tag");
+            List<Order> working = FindOrders(account, tag + ":P", true);
+            if (working.Count == 0)
+                return CopyResult(id, true, "done", "La orden pendiente ya no existe", instrument, 0, 0, null);
+            double price = RoundPrice(instrument, GetDouble(order, "price"));
+            double stopLimit = RoundPrice(instrument, GetDouble(order, "stop_limit_price"));
+            Action change = () =>
+            {
+                foreach (Order item in working)
+                {
+                    if (item.OrderType == OrderType.Limit)
+                        item.LimitPriceChanged = price;
+                    else if (item.OrderType == OrderType.StopMarket)
+                        item.StopPriceChanged = price;
+                    else if (item.OrderType == OrderType.StopLimit)
+                    {
+                        item.StopPriceChanged = price;
+                        item.LimitPriceChanged = stopLimit > 0 ? stopLimit : price;
+                    }
+                }
+                account.Change(working);
+            };
+            RunOnMainThread(change);
+            CopyTrack track = GetTrack(account, tag);
+            if (track != null)
+            {
+                double sl, tp;
+                ResolveSlTp(order, instrument, price, out sl, out tp);
+                lock (copyLock)
+                {
+                    track.StopLoss = sl;
+                    track.TakeProfit = tp;
+                }
+                SaveCopyState();
+            }
+            return CopyResult(id, true, "done", null, instrument, 0, price, null);
+        }
+
+        private Dictionary<string, object> CopyPendingCancel(Account account, Dictionary<string, object> order, string id, Instrument instrument)
+        {
+            string tag = GetString(order, "tag");
+            CancelOrders(account, FindOrders(account, tag + ":P", true));
+            CopyTrack track = GetTrack(account, tag);
+            if (track != null && track.Quantity <= 0)
+                RemoveTrack(account, tag);
+            SaveCopyState();
+            return CopyResult(id, true, "done", null, instrument, 0, 0, null);
+        }
+
+        // La pendiente de la principal se ejecutó.
+        private async Task<Dictionary<string, object>> CopyPendingFillAsync(
+            Account account, Dictionary<string, object> order, string id, Instrument instrument)
+        {
+            string tag = GetString(order, "tag");
+            string pendingTag = GetString(order, "pending_tag");
+            CopyTrack pendingTrack = GetTrack(account, pendingTag);
+            List<Order> working = FindOrders(account, pendingTag + ":P", true);
+            if (working.Count > 0)
+            {
+                CancelOrders(account, working);
+                RemoveTrack(account, pendingTag);
+                return await CopyEntryAsync(account, order, id, instrument, tag).ConfigureAwait(false);
+            }
+
+            int filled = 0;
+            double price = 0;
+            string sideName = GetString(order, "side");
+            foreach (Order item in FindOrders(account, pendingTag + ":P", false))
+            {
+                if (item.Filled > 0)
+                {
+                    filled += item.Filled;
+                    price = item.AverageFillPrice;
+                    sideName = IsBuyAction(item.OrderAction) ? "buy" : "sell";
+                }
+            }
+            if (filled <= 0)
+            {
+                RemoveTrack(account, pendingTag);
+                return CopyResult(id, false, "skipped", "La orden pendiente copiada ya no existe", instrument, 0, 0, null);
+            }
+
+            CopyTrack track = EnsureTrack(account, tag, instrument, sideName == "buy" ? 1 : -1);
+            lock (copyLock)
+            {
+                track.Quantity += filled;
+            }
+            double sl = pendingTrack != null ? pendingTrack.StopLoss : 0;
+            double tp = pendingTrack != null ? pendingTrack.TakeProfit : 0;
+            RemoveTrack(account, pendingTag);
+            PlaceProtective(account, instrument, track, sl, tp);
+            SaveCopyState();
+            return CopyResult(id, true, "filled", null, instrument, filled, price, null);
+        }
+
+        private static double LastPrice(Instrument instrument)
+        {
+            try
+            {
+                if (instrument.MarketData != null && instrument.MarketData.Last != null)
+                    return instrument.MarketData.Last.Price;
+            }
+            catch { }
+            return 0;
+        }
+
+        private static double AveragePrice(Account account, Instrument instrument, int side)
+        {
+            double result = 0;
+            Action action = () =>
+            {
+                foreach (Position position in account.Positions)
+                {
+                    if (position.Instrument != instrument)
+                        continue;
+                    if ((side > 0 && position.MarketPosition == MarketPosition.Long)
+                        || (side < 0 && position.MarketPosition == MarketPosition.Short))
+                        result = position.AveragePrice;
+                }
+            };
+            RunOnMainThread(action);
+            return result;
+        }
+
+        // --- Estado persistente -------------------------------------------------
+
+        private void LoadCopyState()
+        {
+            try
+            {
+                if (!File.Exists(CopyStatePath))
+                    return;
+                Dictionary<string, object> data = NewSerializer().Deserialize<Dictionary<string, object>>(File.ReadAllText(CopyStatePath));
+                lock (copyLock)
+                {
+                    copyTracks.Clear();
+                    foreach (Dictionary<string, object> item in GetList(data, "tracks"))
+                    {
+                        CopyTrack track = new CopyTrack
+                        {
+                            AccountId = GetLong(item, "account", 0),
+                            Tag = GetString(item, "tag"),
+                            Instrument = GetString(item, "instrument"),
+                            Side = GetInt(item, "side", 1),
+                            Quantity = GetInt(item, "quantity", 0),
+                            StopLoss = GetDouble(item, "sl"),
+                            TakeProfit = GetDouble(item, "tp")
+                        };
+                        if (track.AccountId > 0 && !string.IsNullOrEmpty(track.Tag))
+                            copyTracks[track.AccountId.ToString(CultureInfo.InvariantCulture) + "|" + track.Tag] = track;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log("No se pudo leer el estado de copy trading: " + ex.Message);
+            }
+        }
+
+        private void SaveCopyState()
+        {
+            try
+            {
+                List<object> tracks;
+                lock (copyLock)
+                {
+                    tracks = copyTracks.Values.Select(t => (object)new Dictionary<string, object>
+                    {
+                        { "account", t.AccountId },
+                        { "tag", t.Tag },
+                        { "instrument", t.Instrument },
+                        { "side", t.Side },
+                        { "quantity", t.Quantity },
+                        { "sl", t.StopLoss },
+                        { "tp", t.TakeProfit }
+                    }).ToList();
+                }
+                string text = NewSerializer().Serialize(new Dictionary<string, object> { { "tracks", tracks } });
+                File.WriteAllText(CopyStatePath, text);
+            }
+            catch (Exception ex)
+            {
+                LogThrottled("No se pudo guardar el estado de copy trading: " + ex.Message);
+            }
+        }
+
+        private static IEnumerable<object> GetArray(Dictionary<string, object> data, string key)
+        {
+            object value;
+            if (data == null || !data.TryGetValue(key, out value) || value == null)
+                return new object[0];
+            object[] array = value as object[];
+            if (array != null)
+                return array;
+            ArrayList list = value as ArrayList;
+            if (list != null)
+                return list.ToArray();
+            return new object[0];
+        }
+
+        private static List<Dictionary<string, object>> GetList(Dictionary<string, object> data, string key)
+        {
+            return GetArray(data, key).OfType<Dictionary<string, object>>().ToList();
+        }
+
+        private static double GetDouble(Dictionary<string, object> data, string key)
+        {
+            object value;
+            if (data == null || !data.TryGetValue(key, out value) || value == null)
+                return 0;
+            try
+            {
+                return Convert.ToDouble(value, CultureInfo.InvariantCulture);
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        private class CopyTrack
+        {
+            public long AccountId;
+            public string Tag;
+            public string Instrument;
+            public int Side;
+            public int Quantity;
+            public double StopLoss;
+            public double TakeProfit;
+        }
+
+        private class PosSnap
+        {
+            public Instrument Instrument;
+            public int Side;
+            public int Quantity;
+            public double AveragePrice;
+            public double StopLoss;
+            public double TakeProfit;
+        }
+
+        private class OrdSnap
+        {
+            public Order Order;
+            public Instrument Instrument;
+            public string Side;
+            public string Type;
+            public int Quantity;
+            public double Price;
+            public double StopLimit;
+        }
+
+        private class MasterSnapshot
+        {
+            public readonly Dictionary<string, PosSnap> Positions = new Dictionary<string, PosSnap>();
+            public readonly Dictionary<string, OrdSnap> Orders = new Dictionary<string, OrdSnap>();
+        }
+
+        private class MasterState
+        {
+            public MasterSnapshot Snapshot;
+        }
+
+        private class ReferenceComparer<T> : IEqualityComparer<T> where T : class
+        {
+            public bool Equals(T x, T y)
+            {
+                return ReferenceEquals(x, y);
+            }
+
+            public int GetHashCode(T obj)
+            {
+                return System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
+            }
+        }
+
+        // -------------------------------------------------------------------
         // Tipos internos
         // -------------------------------------------------------------------
 
@@ -1627,6 +2806,7 @@ namespace NinjaTrader.NinjaScript.AddOns
             public int SyncSeconds = 15;
             public int HistoryDays;
             public bool Verbose = true;
+            public bool CopyTrading = true;
 
             public static BridgeConfig From(Dictionary<string, object> data)
             {
@@ -1643,6 +2823,7 @@ namespace NinjaTrader.NinjaScript.AddOns
                 result.SyncSeconds = Math.Max(5, GetInt(data, "syncSeconds", 15));
                 result.HistoryDays = Math.Max(0, GetInt(data, "historyDays", 0));
                 result.Verbose = GetBool(data, "verbose", true);
+                result.CopyTrading = GetBool(data, "copyTrading", true);
                 return result;
             }
         }

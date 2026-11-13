@@ -1,0 +1,408 @@
+<div class="page">
+  <header class="page-head">
+    <div>
+      <div class="eyebrow">Ejecución</div>
+      <h1>Copy trading</h1>
+      <p class="text-sm muted">
+        Copia en tiempo real las operaciones de una cuenta principal a tus cuentas secundarias, con
+        la gestión de tamaño y las protecciones de cada una.
+      </p>
+    </div>
+    <div class="head-actions">
+      <mat-slide-toggle
+        class="global-toggle"
+        [ngModel]="enabled()"
+        (ngModelChange)="toggleGlobal($event)"
+        [disabled]="!overview()"
+      >
+        {{ enabled() ? 'Copia activa' : 'Copia pausada' }}
+      </mat-slide-toggle>
+      <button
+        mat-stroked-button
+        class="panic-btn"
+        (click)="panic(null)"
+        matTooltip="Cierra todo lo copiado, cancela las pendientes copiadas y pausa la copia"
+      >
+        <mat-icon>emergency</mat-icon>
+        Pánico
+      </button>
+      <button mat-flat-button color="primary" (click)="createGroup()">
+        <mat-icon>add</mat-icon>
+        Nuevo grupo
+      </button>
+    </div>
+  </header>
+
+  @if (loading()) {
+    <mat-progress-bar mode="indeterminate" class="page-progress" />
+  }
+
+  @if (overview(); as data) {
+    @if (!data.enabled && data.groups.length) {
+      <div class="banner">
+        <span class="material-symbols-outlined">pause_circle</span>
+        <div>
+          <strong>El copy trading está pausado.</strong>
+          No se copiará ninguna operación hasta que lo actives con el interruptor de arriba.
+        </div>
+      </div>
+    }
+
+    <div class="kpi-grid copy-kpis">
+      <div class="kpi">
+        <span class="kpi-label">Grupos</span>
+        <span class="kpi-value">{{ data.groups.length }}</span>
+        <span class="kpi-meta">{{ followerCount() }} cuentas secundarias</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Bridges conectados</span>
+        <span class="kpi-value">{{ onlineCount() }}/{{ data.accounts.length }}</span>
+        <span class="kpi-meta">Cuentas con el bridge abierto</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-label">Posiciones copiadas</span>
+        <span class="kpi-value">{{ openCopies() }}</span>
+        <span class="kpi-meta">Abiertas ahora en las secundarias</span>
+      </div>
+    </div>
+
+    @for (group of data.groups; track group.id) {
+      <article class="card group-card" [class.paused]="!group.enabled || !data.enabled">
+        <div class="group-head">
+          <div class="group-title">
+            <h3>{{ group.name }}</h3>
+            @if (account(group.masterAccountId); as master) {
+              <div class="master-line">
+                <span class="role-chip master">Principal</span>
+                <span class="dot" [class.online]="master.online"></span>
+                <strong>{{ master.displayName }}</strong>
+                <span class="muted text-xs">{{ accountLine(master) }}</span>
+                @if (!master.online) {
+                  <span class="text-xs warn-text">Bridge sin conectar</span>
+                }
+              </div>
+            }
+          </div>
+          <div class="group-actions">
+            <mat-slide-toggle
+              [ngModel]="group.enabled"
+              (ngModelChange)="toggleGroup(group, $event)"
+              [matTooltip]="group.enabled ? 'Pausar este grupo' : 'Activar este grupo'"
+            >
+              {{ group.enabled ? 'Activo' : 'Pausado' }}
+            </mat-slide-toggle>
+            <button mat-icon-button [matMenuTriggerFor]="groupMenu" aria-label="Opciones del grupo">
+              <mat-icon>more_vert</mat-icon>
+            </button>
+            <mat-menu #groupMenu="matMenu">
+              <button mat-menu-item (click)="editGroup(group)">
+                <span class="material-symbols-outlined">edit</span>
+                Editar grupo
+              </button>
+              <button mat-menu-item (click)="panic(group)">
+                <span class="material-symbols-outlined">emergency</span>
+                Pánico en este grupo
+              </button>
+              <button mat-menu-item (click)="deleteGroup(group)">
+                <span class="material-symbols-outlined">delete</span>
+                Eliminar grupo
+              </button>
+            </mat-menu>
+          </div>
+        </div>
+
+        @if (group.followers.length) {
+          <div class="table-wrap">
+            <table class="data-table followers">
+              <thead>
+                <tr>
+                  <th>Secundaria</th>
+                  <th>Gestión</th>
+                  <th class="num">Copiado</th>
+                  <th class="num">PnL hoy</th>
+                  <th>Estado</th>
+                  <th class="actions-col"></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (follower of group.followers; track follower.id) {
+                  @let acc = account(follower.accountId);
+                  @let state = followerState(follower);
+                  <tr>
+                    <td>
+                      <div class="account-cell">
+                        <span
+                          class="dot"
+                          [class.online]="acc?.online"
+                          [matTooltip]="acc?.online ? 'Bridge conectado' : 'Bridge sin conectar'"
+                        ></span>
+                        <div>
+                          <strong>{{ acc?.displayName ?? 'Cuenta eliminada' }}</strong>
+                          <span class="muted text-xs">{{ accountLine(acc) }}</span>
+                          @if (compatibilityText(follower); as text) {
+                            <span class="compat text-xs">
+                              <span class="material-symbols-outlined">info</span>
+                              {{ text }}
+                            </span>
+                          }
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span class="text-sm">{{ sizingSummary(follower) }}</span>
+                      <div class="flags">
+                        @if (follower.settings.invert) {
+                          <span class="pill small">Invertida</span>
+                        }
+                        @if (!follower.settings.copySltp) {
+                          <span class="pill small">Sin SL/TP</span>
+                        }
+                        @if (!follower.settings.copyPending) {
+                          <span class="pill small">Sin pendientes</span>
+                        }
+                        @if (follower.settings.dailyLossLimit) {
+                          <span class="pill small">
+                            Pérdida máx. {{ formatMoney(follower.settings.dailyLossLimit, acc?.currency) }}
+                          </span>
+                        }
+                        @if (follower.settings.scheduleEnabled) {
+                          <span class="pill small">
+                            {{ follower.settings.scheduleStart }}–{{ follower.settings.scheduleEnd }}
+                          </span>
+                        }
+                        @if (follower.symbolMap.length) {
+                          <span class="pill small">{{ follower.symbolMap.length }} equivalencias</span>
+                        }
+                      </div>
+                    </td>
+                    <td class="num">
+                      <span class="text-sm">{{ follower.openPositions }} pos.</span>
+                      @if (follower.pendingOrders) {
+                        <span class="muted text-xs"> · {{ follower.pendingOrders }} pend.</span>
+                      }
+                    </td>
+                    <td class="num">
+                      @if (follower.dailyPnl !== null) {
+                        <span [class.text-pos]="follower.dailyPnl > 0" [class.text-neg]="follower.dailyPnl < 0">
+                          {{ formatMoney(follower.dailyPnl, acc?.currency) }}
+                        </span>
+                      } @else {
+                        <span class="muted">—</span>
+                      }
+                    </td>
+                    <td>
+                      <span class="state" [attr.data-tone]="state.tone">{{ state.label }}</span>
+                      @if (follower.pausedReason) {
+                        <div class="paused-reason text-xs">{{ follower.pausedReason }}</div>
+                      }
+                    </td>
+                    <td class="actions-col">
+                      <div class="row-actions">
+                        @if (follower.pausedReason) {
+                          <button mat-stroked-button class="small-btn" (click)="resume(follower)">
+                            Reanudar
+                          </button>
+                        }
+                        <mat-slide-toggle
+                          [ngModel]="follower.enabled"
+                          (ngModelChange)="toggleFollower(follower, $event)"
+                          [matTooltip]="follower.enabled ? 'Desactivar la copia en esta cuenta' : 'Activar la copia en esta cuenta'"
+                          aria-label="Activar o desactivar la copia"
+                        />
+                        <button mat-icon-button matTooltip="Configurar" (click)="configure(group, follower)">
+                          <mat-icon>tune</mat-icon>
+                        </button>
+                        <button mat-icon-button matTooltip="Quitar del grupo" (click)="removeFollower(follower)">
+                          <mat-icon>person_remove</mat-icon>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        } @else {
+          <p class="text-sm muted no-followers">
+            Este grupo todavía no tiene cuentas secundarias. Añade al menos una para empezar a copiar.
+          </p>
+        }
+
+        <div class="group-foot">
+          <button
+            mat-stroked-button
+            [matMenuTriggerFor]="addMenu"
+            [disabled]="!availableFollowers(group).length"
+            [matTooltip]="availableFollowers(group).length ? '' : 'No quedan cuentas activas disponibles'"
+          >
+            <mat-icon>person_add</mat-icon>
+            Añadir secundaria
+          </button>
+          <mat-menu #addMenu="matMenu">
+            @for (candidate of availableFollowers(group); track candidate.id) {
+              <button mat-menu-item (click)="addFollower(group, candidate)">
+                <span class="material-symbols-outlined">{{ candidate.online ? 'link' : 'link_off' }}</span>
+                {{ candidate.displayName }} · {{ providerShort(candidate.provider) }}
+              </button>
+            }
+          </mat-menu>
+        </div>
+      </article>
+    } @empty {
+      <div class="card empty-state">
+        <span class="material-symbols-outlined">content_copy</span>
+        <h3>Sin grupos de copia</h3>
+        <p>
+          Crea un grupo, elige la cuenta principal donde operas y añade las cuentas secundarias que
+          deben copiarla. Los futuros se pueden copiar entre MT5, NinjaTrader 8 y ATAS; los CFD y el
+          Forex, entre cuentas de MT5.
+        </p>
+        <button mat-flat-button color="primary" (click)="createGroup()">
+          <mat-icon>add</mat-icon>
+          Nuevo grupo
+        </button>
+      </div>
+    }
+
+    <section class="card">
+      <div class="card-header">
+        <div class="card-title">
+          <span class="material-symbols-outlined">lan</span>
+          Conexión de las cuentas
+        </div>
+        <span class="card-sub">El bridge de cada plataforma debe estar abierto para copiar</span>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Cuenta</th>
+              <th>Rol</th>
+              <th>Bridge</th>
+              <th class="num">Balance</th>
+              <th class="num">Equity</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (acc of data.accounts; track acc.id) {
+              <tr>
+                <td>
+                  <strong>{{ acc.displayName }}</strong>
+                  <span class="muted text-xs"> {{ accountLine(acc) }}</span>
+                </td>
+                <td>
+                  @switch (acc.role) {
+                    @case ('master') {
+                      <span class="role-chip master">Principal</span>
+                    }
+                    @case ('follower') {
+                      <span class="role-chip follower">Secundaria</span>
+                    }
+                    @default {
+                      <span class="muted text-xs">Solo diario</span>
+                    }
+                  }
+                </td>
+                <td>
+                  <span class="dot" [class.online]="acc.online"></span>
+                  @if (acc.online) {
+                    <span class="text-sm">Conectado</span>
+                    @if (acc.bridgeVersion) {
+                      <span class="muted text-xs"> · v{{ acc.bridgeVersion }}</span>
+                    }
+                  } @else {
+                    <span class="muted text-sm">
+                      {{ acc.lastSeenAt ? 'Visto ' + formatDateTime(acc.lastSeenAt) : 'Sin conectar' }}
+                    </span>
+                  }
+                </td>
+                <td class="num">{{ formatMoney(acc.balance, acc.currency) }}</td>
+                <td class="num">{{ formatMoney(acc.equity, acc.currency) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header">
+        <div class="card-title">
+          <span class="material-symbols-outlined">history</span>
+          Registro en vivo
+        </div>
+        <div class="log-tools">
+          <button mat-stroked-button class="small-btn" [matMenuTriggerFor]="filterMenu">
+            {{ logFilterName() }}
+            <mat-icon>expand_more</mat-icon>
+          </button>
+          <mat-menu #filterMenu="matMenu">
+            <button mat-menu-item (click)="setLogFilter(null)">Todos los grupos</button>
+            @for (group of data.groups; track group.id) {
+              <button mat-menu-item (click)="setLogFilter(group.id)">{{ group.name }}</button>
+            }
+          </mat-menu>
+          <button mat-icon-button matTooltip="Actualizar" (click)="refreshLog()">
+            <mat-icon>refresh</mat-icon>
+          </button>
+        </div>
+      </div>
+      @if (log().length) {
+        <div class="table-wrap">
+          <table class="data-table log">
+            <thead>
+              <tr>
+                <th>Hora</th>
+                <th>Cuenta</th>
+                <th>Acción</th>
+                <th>Símbolo</th>
+                <th class="num">Principal</th>
+                <th class="num">Copia</th>
+                <th class="num">Precio</th>
+                <th class="num">Slippage</th>
+                <th class="num">Latencia</th>
+                <th>Resultado</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (entry of log(); track entry.id) {
+                <tr>
+                  <td class="nowrap mono text-xs">{{ formatDateTime(entry.createdAt) }}</td>
+                  <td>{{ entry.accountName }}</td>
+                  <td>
+                    {{ actionLabel(entry) }}
+                    @if (entry.side) {
+                      <span class="side" [attr.data-side]="entry.side">
+                        {{ entry.side === 'buy' ? 'Compra' : 'Venta' }}
+                      </span>
+                    }
+                  </td>
+                  <td class="mono">{{ entry.symbol }}</td>
+                  <td class="num">{{ entry.masterVolume !== null ? formatNumber(entry.masterVolume, 2) : '—' }}</td>
+                  <td class="num">
+                    {{ entry.fillVolume !== null ? formatNumber(entry.fillVolume, 2) : entry.volume ? formatNumber(entry.volume, 2) : '—' }}
+                  </td>
+                  <td class="num mono">{{ entry.fillPrice !== null ? entry.fillPrice : '—' }}</td>
+                  <td class="num mono">{{ slippage(entry) || '—' }}</td>
+                  <td class="num">{{ entry.latencyMs !== null ? entry.latencyMs + ' ms' : '—' }}</td>
+                  <td>
+                    <span class="state" [attr.data-tone]="statusTone(entry.status)">
+                      {{ statusLabel(entry.status) }}
+                    </span>
+                    @if (entry.error) {
+                      <div class="log-error text-xs">{{ entry.error }}</div>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      } @else {
+        <p class="text-sm muted log-empty">
+          Aquí verás cada operación copiada: tamaño, precio, latencia y el motivo si se ha saltado.
+        </p>
+      }
+    </section>
+  }
+</div>

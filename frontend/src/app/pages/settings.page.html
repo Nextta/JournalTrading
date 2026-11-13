@@ -86,12 +86,27 @@
             <code>{{ settings.nt8ConfigPath || 'No detectado' }}</code>
           </div>
 
+          @if (installing() === 'nt8') {
+            <mat-progress-bar mode="indeterminate" class="install-progress" />
+            <p class="text-xs muted help">Compilando e instalando el AddOn. Puede tardar un minuto…</p>
+          }
+
           <div class="settings-actions">
+            <button
+              mat-flat-button
+              color="primary"
+              [disabled]="installing() !== null"
+              (click)="installBridge('nt8')"
+              matTooltip="Copia el AddOn a NinjaTrader, lo compila y escribe la configuración. Cierra NinjaTrader antes."
+            >
+              <mat-icon>download</mat-icon>
+              {{ installing() === 'nt8' ? 'Instalando…' : 'Instalar AddOn NT8' }}
+            </button>
             <button mat-stroked-button (click)="openNt8Folder()">
               <mat-icon>folder_open</mat-icon>
               Abrir carpeta NT8
             </button>
-            <button mat-flat-button color="primary" [disabled]="writingNt8()" (click)="configureNt8()">
+            <button mat-stroked-button [disabled]="writingNt8()" (click)="configureNt8()">
               <mat-icon>settings_suggest</mat-icon>
               {{ writingNt8() ? 'Escribiendo…' : 'Escribir configuración NT8' }}
             </button>
@@ -128,12 +143,27 @@
             <code>{{ settings.atasIndicatorsPath || 'No detectada' }}</code>
           </div>
 
+          @if (installing() === 'atas') {
+            <mat-progress-bar mode="indeterminate" class="install-progress" />
+            <p class="text-xs muted help">Compilando e instalando el indicador. Puede tardar un minuto…</p>
+          }
+
           <div class="settings-actions">
+            <button
+              mat-flat-button
+              color="primary"
+              [disabled]="installing() !== null"
+              (click)="installBridge('atas')"
+              matTooltip="Compila el indicador, lo copia a ATAS y escribe la configuración. Cierra ATAS antes y ten instalado el SDK de .NET 10."
+            >
+              <mat-icon>download</mat-icon>
+              {{ installing() === 'atas' ? 'Instalando…' : 'Instalar AddOn ATAS' }}
+            </button>
             <button mat-stroked-button (click)="openAtasFolder()">
               <mat-icon>folder_open</mat-icon>
               Abrir carpeta de indicadores
             </button>
-            <button mat-flat-button color="primary" [disabled]="writingAtas()" (click)="configureAtas()">
+            <button mat-stroked-button [disabled]="writingAtas()" (click)="configureAtas()">
               <mat-icon>settings_suggest</mat-icon>
               {{ writingAtas() ? 'Escribiendo…' : 'Escribir configuración ATAS' }}
             </button>
@@ -248,14 +278,17 @@
         <h3>NinjaTrader 8</h3>
         <ol>
           <li>
-            Cierra NinjaTrader y ejecuta <code>tools\install-nt8-bridge.ps1</code>. También puedes
-            copiar <code>nt8\JournalTradingBridge.cs</code> a
-            <code>Documents\NinjaTrader 8\bin\Custom\AddOns</code> y compilar con el editor de
+            Cierra NinjaTrader y pulsa <strong>Instalar AddOn NT8</strong> en la tarjeta de NinjaTrader
+            de arriba. Copia el AddOn, lo compila (necesita Visual Studio Build Tools) y escribe la
+            configuración con la API key y el puerto actuales. Sin Build Tools, copia
+            <code>nt8\JournalTradingBridge.cs</code> a
+            <code>Documents\NinjaTrader 8\bin\Custom\AddOns</code> y compila con F5 en el editor de
             NinjaScript.
           </li>
           <li>
-            Pulsa <strong>Escribir configuración NT8</strong> para generar
-            <code>JournalTradingBridge.json</code> con la API key y el puerto actuales.
+            Si más adelante cambias el puerto o la API key, pulsa
+            <strong>Escribir configuración NT8</strong> para actualizar
+            <code>JournalTradingBridge.json</code>.
           </li>
           <li>Abre NinjaTrader 8. El AddOn se carga automáticamente y envía un heartbeat cada 5 segundos.</li>
           <li>
@@ -281,14 +314,10 @@
             empezar a guardar su historial y diario.
           </li>
           <li>
-            <em>Opcional, para tiempo real y velas:</em> pulsa
-            <strong>Escribir configuración ATAS</strong> para generar
-            <code>JournalTradingBridge.json</code> con la API key y el puerto actuales.
-          </li>
-          <li>
-            Cierra ATAS y ejecuta <code>tools\install-atas-bridge.ps1</code> (o
-            <code>npm run install:atas</code>). Compila el indicador con el SDK de .NET 10 y copia
-            <code>JournalTradingBridge.dll</code> a <code>%APPDATA%\ATAS X\Indicators</code>.
+            <em>Opcional, para tiempo real, velas y copy trading:</em> cierra ATAS y pulsa
+            <strong>Instalar AddOn ATAS</strong> en la tarjeta de ATAS X de arriba. Compila el
+            indicador con el SDK de .NET 10, copia <code>JournalTradingBridge.dll</code> a
+            <code>%APPDATA%\ATAS X\Indicators</code> y escribe la configuración.
           </li>
           <li>
             Abre ATAS y añade el indicador <strong>JournalTrading Bridge</strong> (categoría
@@ -301,6 +330,43 @@
           (ya las sincroniza el AddOn de NT8). Sin el indicador, las operaciones de ATAS no tienen
           velas en los gráficos. Si el indicador no conecta, revisa el registro de ATAS: los errores
           aparecen con el prefijo <code>JournalTrading:</code>.
+        </p>
+
+        <h3>Copy trading</h3>
+        <p class="text-sm">
+          Usa los mismos bridges: el rol de cada cuenta (principal o secundaria) se asigna en la página
+          <strong>Copy trading</strong>. Los futuros se copian entre MT5, NinjaTrader 8 y ATAS; los CFD
+          y el Forex, solo entre cuentas de MT5.
+        </p>
+        <ol>
+          <li>
+            Actualiza los bridges a la última versión: el EA de MT5 (1.2.0) y, con los botones
+            <strong>Instalar AddOn NT8</strong> e <strong>Instalar AddOn ATAS</strong> de arriba, el
+            AddOn de NinjaTrader y el indicador de ATAS.
+          </li>
+          <li>
+            <strong>MT5</strong>: deja el EA abierto en cada terminal, con el botón
+            <strong>Algo Trading</strong> activo. En las secundarias, activa también
+            <strong>Permitir trading algorítmico</strong> en las propiedades del EA.
+          </li>
+          <li>
+            <strong>NinjaTrader 8</strong>: el AddOn atiende todas las cuentas conectadas. No hace falta
+            nada más.
+          </li>
+          <li>
+            <strong>ATAS</strong>: ATAS solo deja operar la cuenta y el instrumento de cada gráfico. En
+            cada cuenta secundaria abre un gráfico por instrumento que quieras copiar y añade el
+            indicador <strong>JournalTrading Bridge</strong>.
+          </li>
+          <li>
+            En <strong>Copy trading</strong>, crea un grupo, elige la cuenta principal, añade las
+            secundarias y configura su gestión. Después activa el grupo y el interruptor
+            <strong>Copia activa</strong>.
+          </li>
+        </ol>
+        <p class="text-xs muted help">
+          Lo que ya estaba abierto al activar la copia no se copia, y las operaciones manuales de las
+          secundarias no se tocan. Prueba primero con cuentas demo o de simulación.
         </p>
       </div>
     </section>

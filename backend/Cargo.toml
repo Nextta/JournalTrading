@@ -1,6 +1,6 @@
 [package]
 name = "journal-trading"
-version = "0.1.3"
+version = "0.1.5"
 description = "JournalTrading - diario y analitica de trading"
 authors = ["Jairo"]
 license = "MIT"
