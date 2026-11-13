@@ -83,6 +83,14 @@ export class CopyFollowerDialogComponent {
   protected readonly days = DAYS;
   protected readonly providerShort = providerShort;
   protected readonly futuresOnly = this.data.account?.provider !== 'mt5';
+  /**
+   * El ajuste mini/micro/nano solo afecta a futuros. NT8 y ATAS siempre operan futuros; entre
+   * cuentas MT5 solo si alguna tiene futuros en su Market Watch (lo informa el EA conectado).
+   */
+  protected readonly canCopyFutures =
+    this.futuresOnly ||
+    this.data.master?.provider !== 'mt5' ||
+    [...(this.data.master?.markets ?? []), ...(this.data.account?.markets ?? [])].includes('futures');
 
   protected settings: FollowerSettings = structuredClone(this.data.follower.settings);
   protected symbolMap: SymbolMapRow[] = this.data.follower.symbolMap.map((row) => ({ ...row }));

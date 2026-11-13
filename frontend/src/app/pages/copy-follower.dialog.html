@@ -102,9 +102,11 @@
       }
     </div>
 
-    <mat-slide-toggle [(ngModel)]="settings.familyScaling">
-      Ajustar entre mini, micro y nano por el valor del punto (1 NQ → 10 MNQ)
-    </mat-slide-toggle>
+    @if (canCopyFutures) {
+      <mat-slide-toggle [(ngModel)]="settings.familyScaling">
+        Futuros: ajustar entre mini, micro y nano por el valor del punto (1 NQ → 10 MNQ)
+      </mat-slide-toggle>
+    }
   </section>
 
   <!-- Qué se copia -->
