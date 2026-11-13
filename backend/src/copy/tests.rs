@@ -317,3 +317,33 @@ async fn tradable_filter_only_delivers_matching_orders() {
     pool.close().await;
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[tokio::test]
+async fn overview_reads_followers_with_and_without_copies() {
+    let (pool, dir) = setup().await;
+    sqlx::query(
+        "INSERT INTO copy_positions (follower_id, master_ref, tag, symbol, side, volume, updated_at)
+         VALUES ('f-mt5', '1', 'JTabcdef01', 'EURUSD', 'buy', 0.5, '2026-01-01')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let rows = sqlx::query(super::commands::FOLLOWER_ROWS_SQL)
+        .bind("g1")
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 2);
+    for row in rows {
+        let id: String = row.get("id");
+        let volume: f64 = row.try_get("open_volume").unwrap();
+        let positions: i64 = row.get("open_positions");
+        if id == "f-mt5" {
+            assert_eq!((volume, positions), (0.5, 1));
+        } else {
+            assert_eq!((volume, positions), (0.0, 0));
+        }
+    }
+    pool.close().await;
+    let _ = std::fs::remove_dir_all(dir);
+}

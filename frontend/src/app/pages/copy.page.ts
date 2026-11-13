@@ -205,11 +205,15 @@ export class CopyPage {
     const inGroup = new Set(group.followers.map((f) => f.accountId));
     return this.accounts().filter(
       (account) =>
-        account.status === 'active' &&
+        account.status !== 'archived' &&
         account.id !== group.masterAccountId &&
         !masters.has(account.id) &&
         !inGroup.has(account.id),
     );
+  }
+
+  protected hasActiveCandidate(group: CopyGroup): boolean {
+    return this.availableFollowers(group).some((account) => account.status === 'active');
   }
 
   protected sizingSummary(follower: CopyFollower): string {

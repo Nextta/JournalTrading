@@ -233,16 +233,29 @@
             mat-stroked-button
             [matMenuTriggerFor]="addMenu"
             [disabled]="!availableFollowers(group).length"
-            [matTooltip]="availableFollowers(group).length ? '' : 'No quedan cuentas activas disponibles'"
+            [matTooltip]="
+              !availableFollowers(group).length
+                ? 'No quedan cuentas disponibles'
+                : hasActiveCandidate(group)
+                  ? ''
+                  : 'Las cuentas disponibles están pendientes: actívalas en Cuentas'
+            "
           >
             <mat-icon>person_add</mat-icon>
             Añadir secundaria
           </button>
           <mat-menu #addMenu="matMenu">
             @for (candidate of availableFollowers(group); track candidate.id) {
-              <button mat-menu-item (click)="addFollower(group, candidate)">
+              <button
+                mat-menu-item
+                [disabled]="candidate.status !== 'active'"
+                (click)="addFollower(group, candidate)"
+              >
                 <span class="material-symbols-outlined">{{ candidate.online ? 'link' : 'link_off' }}</span>
                 {{ candidate.displayName }} · {{ providerShort(candidate.provider) }}
+                @if (candidate.status !== 'active') {
+                  <span class="muted text-xs"> · pendiente: actívala en Cuentas</span>
+                }
               </button>
             }
           </mat-menu>

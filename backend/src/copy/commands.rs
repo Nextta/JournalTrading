@@ -36,6 +36,14 @@ async fn ensure_follower_exists(state: &AppState, id: &str) -> AppResult<()> {
         .ok_or_else(|| AppError::NotFound("Cuenta secundaria no encontrada".into()))
 }
 
+/// Secundarias de un grupo con el resumen de lo copiado. `0.0` y `CAST`: con `0` a secas SQLite
+/// devuelve un entero cuando no hay nada copiado y no se puede leer como `f64`.
+pub(crate) const FOLLOWER_ROWS_SQL: &str = "SELECT f.id, f.account_id, f.enabled, f.paused_reason, f.paused_at, f.settings_json,
+        (SELECT COUNT(*) FROM copy_positions p WHERE p.follower_id = f.id) AS open_positions,
+        (SELECT CAST(COALESCE(SUM(volume), 0.0) AS REAL) FROM copy_positions p WHERE p.follower_id = f.id) AS open_volume,
+        (SELECT COUNT(*) FROM copy_pendings p WHERE p.follower_id = f.id) AS pending_orders
+ FROM copy_followers f WHERE f.group_id = ? ORDER BY f.created_at ASC";
+
 #[tauri::command]
 pub async fn get_copy_overview(state: State<'_, AppState>) -> AppResult<CopyOverview> {
     let pool = &state.db;
@@ -111,13 +119,7 @@ pub async fn get_copy_overview(state: State<'_, AppState>) -> AppResult<CopyOver
             .get(&master_account_id)
             .cloned()
             .unwrap_or_default();
-        let follower_rows = sqlx::query(
-            "SELECT f.id, f.account_id, f.enabled, f.paused_reason, f.paused_at, f.settings_json,
-                    (SELECT COUNT(*) FROM copy_positions p WHERE p.follower_id = f.id) AS open_positions,
-                    (SELECT COALESCE(SUM(volume), 0) FROM copy_positions p WHERE p.follower_id = f.id) AS open_volume,
-                    (SELECT COUNT(*) FROM copy_pendings p WHERE p.follower_id = f.id) AS pending_orders
-             FROM copy_followers f WHERE f.group_id = ? ORDER BY f.created_at ASC",
-        )
+        let follower_rows = sqlx::query(FOLLOWER_ROWS_SQL)
         .bind(&group_id)
         .fetch_all(pool)
         .await?;
