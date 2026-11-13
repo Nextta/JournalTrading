@@ -1,6 +1,6 @@
 {
   "name": "journal-trading",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "private": true,
   "description": "Diario de trading de escritorio con Tauri, Angular, SQLite, MetaTrader 5 y NinjaTrader 8",
   "scripts": {

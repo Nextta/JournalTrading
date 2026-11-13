@@ -231,6 +231,11 @@
       <div class="settings-body">
         <h3>MetaTrader 5</h3>
         <ol>
+          <li>
+            En MT5, ve a <strong>Herramientas &gt; Opciones &gt; Asesores expertos</strong>, activa
+            <strong>Permitir WebRequest para las siguientes URL</strong> y añade
+            <code>{{ apiOrigin() }}</code>. Sin esto, el EA no puede comunicarse con la app.
+          </li>
           <li>Compila <code>TradingJournalBridge.mq5</code> en MetaEditor y adjúntalo a un gráfico.</li>
           <li>
             En las propiedades del EA, configura el endpoint
@@ -261,6 +266,41 @@
         <p class="text-xs muted help">
           El AddOn recupera las ejecuciones históricas de la base de datos local de NinjaTrader y
           solicita las velas bajo demanda al abrir un gráfico. No envía órdenes.
+        </p>
+
+        <h3>ATAS X</h3>
+        <p class="text-sm">
+          El historial se importa solo: la app lee la base de datos local de ATAS
+          (<code>%APPDATA%\ATAS X\Database</code>) aunque ATAS esté cerrado y la relee cada 5 segundos
+          cuando cambia. El indicador es opcional y añade tiempo real y velas para los gráficos.
+        </p>
+        <ol>
+          <li>
+            Comprueba en la tarjeta <strong>ATAS X</strong> de arriba que se haya detectado la base de
+            datos. Las cuentas aparecerán pendientes en <strong>Cuentas</strong>; actívalas para
+            empezar a guardar su historial y diario.
+          </li>
+          <li>
+            <em>Opcional, para tiempo real y velas:</em> pulsa
+            <strong>Escribir configuración ATAS</strong> para generar
+            <code>JournalTradingBridge.json</code> con la API key y el puerto actuales.
+          </li>
+          <li>
+            Cierra ATAS y ejecuta <code>tools\install-atas-bridge.ps1</code> (o
+            <code>npm run install:atas</code>). Compila el indicador con el SDK de .NET 10 y copia
+            <code>JournalTradingBridge.dll</code> a <code>%APPDATA%\ATAS X\Indicators</code>.
+          </li>
+          <li>
+            Abre ATAS y añade el indicador <strong>JournalTrading Bridge</strong> (categoría
+            <em>JournalTrading</em>) a un gráfico de la cuenta que quieras seguir. Basta un gráfico por
+            cuenta.
+          </li>
+        </ol>
+        <p class="text-xs muted help">
+          Se ignoran las cuentas Replay, Backtest y Playback, y las que ATAS recibe desde NinjaTrader 8
+          (ya las sincroniza el AddOn de NT8). Sin el indicador, las operaciones de ATAS no tienen
+          velas en los gráficos. Si el indicador no conecta, revisa el registro de ATAS: los errores
+          aparecen con el prefijo <code>JournalTrading:</code>.
         </p>
       </div>
     </section>

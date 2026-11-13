@@ -73,8 +73,12 @@ export class SettingsPage {
     return `${key.slice(0, 4)}••••••••${key.slice(-4)}`;
   }
 
+  protected apiOrigin(): string {
+    return `http://127.0.0.1:${this.settings()?.apiPort ?? this.port}`;
+  }
+
   protected endpoint(): string {
-    return `http://127.0.0.1:${this.settings()?.apiPort ?? this.port}/api/v1`;
+    return `${this.apiOrigin()}/api/v1`;
   }
 
   protected async copy(value: string): Promise<void> {
