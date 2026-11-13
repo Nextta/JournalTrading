@@ -24,7 +24,6 @@ import {
   type CalendarWeek,
 } from '../core/calendar';
 import {
-  addDays,
   formatDateLong,
   formatDateShort,
   formatDateTime,
@@ -55,7 +54,7 @@ import { NotificationsService } from '../core/notifications.service';
 import { Store } from '../core/store';
 import { ChartComponent } from '../shared/chart.component';
 
-type Period = 'month' | '30d' | 'year';
+type Period = 'month' | 'year' | 'all';
 type ValueMode = 'money' | 'percent' | 'r';
 
 interface HeatmapRow {
@@ -146,7 +145,7 @@ export class DashboardPage {
   });
 
   protected readonly periodLabel = computed(() => {
-    if (this.period() === '30d') return 'últimos 30 días';
+    if (this.period() === 'all') return 'todo el historial';
     if (this.period() === 'year') return 'año en curso';
     return 'mes en curso';
   });
@@ -381,8 +380,8 @@ export class DashboardPage {
     }
   }
 
-  private rangeFrom(): string {
-    if (this.period() === '30d') return addDays(this.today, -29);
+  private rangeFrom(): string | null {
+    if (this.period() === 'all') return null;
     if (this.period() === 'year') return `${this.today.slice(0, 4)}-01-01`;
     return startOfMonth();
   }

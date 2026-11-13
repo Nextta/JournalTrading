@@ -72,11 +72,11 @@
           <button type="button" [class.active]="period() === 'month'" (click)="setPeriod('month')">
             Mes
           </button>
-          <button type="button" [class.active]="period() === '30d'" (click)="setPeriod('30d')">
-            30 días
-          </button>
           <button type="button" [class.active]="period() === 'year'" (click)="setPeriod('year')">
             Año
+          </button>
+          <button type="button" [class.active]="period() === 'all'" (click)="setPeriod('all')">
+            Full
           </button>
         </div>
         <a mat-flat-button color="primary" routerLink="/diario">
