@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1a2238"/>
+      <stop offset="1" stop-color="#0b0f17"/>
+    </linearGradient>
+    <linearGradient id="trend" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#6d7cff"/>
+      <stop offset="1" stop-color="#a5b0ff"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34e3a0"/>
+      <stop offset="1" stop-color="#16b87a"/>
+    </linearGradient>
+    <linearGradient id="red" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff6b7d"/>
+      <stop offset="1" stop-color="#e2445a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Fondo -->
+  <rect x="32" y="32" width="960" height="960" rx="220" fill="url(#bg)"/>
+  <rect x="32" y="32" width="960" height="960" rx="220" fill="none" stroke="#6d7cff" stroke-opacity="0.35" stroke-width="12"/>
+
+  <!-- Línea base -->
+  <line x1="200" y1="800" x2="824" y2="800" stroke="#2c3550" stroke-width="20" stroke-linecap="round"/>
+
+  <!-- Vela 1 (alcista) -->
+  <line x1="300" y1="470" x2="300" y2="750" stroke="#16b87a" stroke-width="22" stroke-linecap="round"/>
+  <rect x="245" y="540" width="110" height="160" rx="22" fill="url(#green)"/>
+
+  <!-- Vela 2 (bajista) -->
+  <line x1="512" y1="380" x2="512" y2="680" stroke="#e2445a" stroke-width="22" stroke-linecap="round"/>
+  <rect x="457" y="430" width="110" height="170" rx="22" fill="url(#red)"/>
+
+  <!-- Vela 3 (alcista) -->
+  <line x1="724" y1="250" x2="724" y2="590" stroke="#16b87a" stroke-width="22" stroke-linecap="round"/>
+  <rect x="669" y="300" width="110" height="230" rx="22" fill="url(#green)"/>
+
+  <!-- Tendencia -->
+  <polyline points="190,640 380,500 560,560 820,250" fill="none" stroke="url(#trend)" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+  <polygon points="850,210 860,330 745,265" fill="#a5b0ff"/>
+</svg>
