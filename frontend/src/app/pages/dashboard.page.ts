@@ -8,6 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -53,6 +54,7 @@ import type {
 import { NotificationsService } from '../core/notifications.service';
 import { Store } from '../core/store';
 import { ChartComponent } from '../shared/chart.component';
+import { openReportDialog } from './report-download.dialog';
 
 type Period = 'month' | 'year' | 'all';
 type ValueMode = 'money' | 'percent' | 'r';
@@ -82,6 +84,7 @@ export class DashboardPage {
   protected readonly store = inject(Store);
   private readonly api = inject(ApiService);
   private readonly notifications = inject(NotificationsService);
+  private readonly dialog = inject(MatDialog);
 
   protected readonly today = todayIso();
   protected readonly todayLabel = formatDateLong(this.today);
@@ -296,6 +299,11 @@ export class DashboardPage {
   protected readonly formatPrice = formatPrice;
   protected readonly formatR = formatR;
   protected readonly sideLabel = sideLabel;
+
+  protected openReport(): void {
+    const account = this.store.activeAccount();
+    if (account) openReportDialog(this.dialog, account);
+  }
 
   constructor() {
     effect(() => {

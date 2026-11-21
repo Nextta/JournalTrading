@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "JournalTrading",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "identifier": "com.jairo.journaltrading",
   "build": {
     "frontendDist": "../frontend/dist/frontend/browser",

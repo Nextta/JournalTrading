@@ -1,6 +1,6 @@
 [package]
 name = "journal-trading"
-version = "0.1.8"
+version = "0.1.9"
 description = "JournalTrading - diario y analitica de trading"
 authors = ["Jairo"]
 license = "MIT"
@@ -32,3 +32,4 @@ axum = "0.8"
 ammonia = "4"
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
+tauri-plugin-dialog = "2"

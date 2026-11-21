@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
@@ -38,6 +39,7 @@ import type {
 import { NotificationsService } from '../core/notifications.service';
 import { Store } from '../core/store';
 import { ChartComponent } from '../shared/chart.component';
+import { openReportDialog } from './report-download.dialog';
 
 const AXIS_COLOR = '#8a99b3';
 const GRID_COLOR = 'rgba(255, 255, 255, 0.05)';
@@ -65,6 +67,7 @@ export class StatsPage {
   protected readonly store = inject(Store);
   private readonly api = inject(ApiService);
   private readonly notifications = inject(NotificationsService);
+  private readonly dialog = inject(MatDialog);
 
   protected readonly today = todayIso();
   protected readonly loading = signal(false);
@@ -210,6 +213,11 @@ export class StatsPage {
   protected readonly formatDateNumeric = formatDateNumeric;
   protected readonly formatNumber = formatNumber;
   protected readonly formatR = formatR;
+
+  protected openReport(): void {
+    const account = this.store.activeAccount();
+    if (account) openReportDialog(this.dialog, account);
+  }
 
   constructor() {
     effect(() => {

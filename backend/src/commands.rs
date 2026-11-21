@@ -1480,3 +1480,27 @@ pub async fn create_backup(state: State<'_, AppState>) -> AppResult<String> {
         .await?;
     Ok(path.to_string_lossy().to_string())
 }
+
+/// Guarda en disco el PDF del reporte generado en el frontend. La ruta la elige
+/// el usuario en el diálogo nativo "Guardar como".
+#[tauri::command]
+pub async fn save_report_pdf(path: String, data_base64: String) -> AppResult<String> {
+    let target = PathBuf::from(path.trim());
+    let is_pdf = target
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("pdf"));
+    if !is_pdf {
+        return Err(AppError::Validation(
+            "El archivo debe tener extensión .pdf".into(),
+        ));
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data_base64.as_bytes())
+        .map_err(|_| AppError::Validation("Contenido del PDF no válido".into()))?;
+    if !bytes.starts_with(b"%PDF") {
+        return Err(AppError::Validation("Contenido del PDF no válido".into()));
+    }
+    tokio::fs::write(&target, bytes).await?;
+    Ok(target.to_string_lossy().to_string())
+}

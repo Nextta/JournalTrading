@@ -324,6 +324,10 @@ export class ApiService {
     return this.call('create_backup');
   }
 
+  saveReportPdf(path: string, dataBase64: string): Promise<string> {
+    return this.call('save_report_pdf', { path, dataBase64 });
+  }
+
   // --- Copy trading -------------------------------------------------------
 
   getCopyOverview(): Promise<CopyOverview> {

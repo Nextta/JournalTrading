@@ -24,6 +24,7 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -101,6 +102,7 @@ pub fn run() {
             commands::open_atas_indicators_folder,
             commands::open_data_dir,
             commands::create_backup,
+            commands::save_report_pdf,
             installers::install_nt8_bridge,
             installers::install_atas_bridge,
             copy::commands::get_copy_overview,

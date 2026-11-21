@@ -8,6 +8,10 @@
           {{ account.displayName }} · {{ account.server }} · análisis de tu ventaja operativa
         </p>
       </div>
+      <button mat-stroked-button (click)="openReport()">
+        <span class="material-symbols-outlined">picture_as_pdf</span>
+        Reporte PDF
+      </button>
     </header>
 
     <section class="card filters">
