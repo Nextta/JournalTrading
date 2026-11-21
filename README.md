@@ -102,7 +102,7 @@ npm run build
 Artefactos generados:
 
 - Ejecutable: `backend\target\release\journal-trading.exe`
-- Instalador: `backend\target\release\bundle\nsis\JournalTrading_0.1.10_x64-setup.exe`
+- Instalador: `backend\target\release\bundle\nsis\JournalTrading_0.1.11_x64-setup.exe`
 
 También puedes compilar únicamente el frontend:
 
