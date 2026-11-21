@@ -153,9 +153,29 @@ class ReportWriter {
     value: string,
     x: number,
     y: number,
-    options: { align?: 'left' | 'right' | 'center'; maxWidth?: number } = {},
+    options: { align?: 'left' | 'right' | 'center'; maxWidth?: number; shrink?: boolean } = {},
   ): void {
-    this.doc.text(clean(value), x, y, { baseline: 'alphabetic', ...options });
+    const { maxWidth, shrink, align } = options;
+    let content = clean(value);
+    const size = this.doc.getFontSize();
+    // Siempre en una sola línea: jsPDF partiría el texto y se solaparía con lo de debajo.
+    if (maxWidth) {
+      if (shrink) {
+        let current = size;
+        while (current > size * 0.6 && this.doc.getTextWidth(content) > maxWidth) {
+          current -= 0.5;
+          this.doc.setFontSize(current);
+        }
+      }
+      if (this.doc.getTextWidth(content) > maxWidth) {
+        while (content.length > 1 && this.doc.getTextWidth(`${content}…`) > maxWidth) {
+          content = content.slice(0, -1);
+        }
+        content = `${content.trimEnd()}…`;
+      }
+    }
+    this.doc.text(content, x, y, { baseline: 'alphabetic', align });
+    this.doc.setFontSize(size);
   }
 
   private sectionTitle(title: string, subtitle?: string, minBody = 40): void {
@@ -195,7 +215,7 @@ class ReportWriter {
         this.font(6.8, 'bold', PDF_COLORS.muted);
         this.text(item.label.toUpperCase(), x + 3.5, this.y + 5.4, { maxWidth: width - 7 });
         this.font(12.5, 'bold', toneColor(item.tone));
-        this.text(item.value, x + 3.5, this.y + 12.2, { maxWidth: width - 7 });
+        this.text(item.value, x + 3.5, this.y + 12.2, { maxWidth: width - 7, shrink: true });
         if (item.meta) {
           this.font(6.8, 'normal', PDF_COLORS.muted);
           this.text(item.meta, x + 3.5, this.y + 16.4, { maxWidth: width - 7 });
@@ -300,7 +320,7 @@ class ReportWriter {
     this.text('REPORTE DE RENDIMIENTO', PAGE_W - MARGIN, 20.2, { align: 'right' });
 
     this.font(24, 'bold', PDF_COLORS.white);
-    this.text(account.displayName || account.server, MARGIN, 45, { maxWidth: CONTENT_W });
+    this.text(account.displayName || account.server, MARGIN, 45, { maxWidth: CONTENT_W, shrink: true });
     this.font(10.5, 'normal', '#c9cfe8');
     this.text(periodLabel(data), MARGIN, 54);
     this.font(8, 'normal', '#9099c0');
@@ -342,7 +362,7 @@ class ReportWriter {
       this.font(6.8, 'bold', PDF_COLORS.faint);
       this.text(label.toUpperCase(), x, y);
       this.font(9.5, 'bold', PDF_COLORS.text);
-      this.text(value, x, y + 5, { maxWidth: colW - 8 });
+      this.text(value, x, y + 5, { maxWidth: colW - 8, shrink: true });
     });
 
     // Cifras destacadas.
@@ -383,7 +403,7 @@ class ReportWriter {
       this.font(7, 'bold', PDF_COLORS.muted);
       this.text(item.label.toUpperCase(), x + 4, this.y + 6.5);
       this.font(16, 'bold', toneColor(item.tone));
-      this.text(item.value, x + 4, this.y + 15.5, { maxWidth: width - 8 });
+      this.text(item.value, x + 4, this.y + 15.5, { maxWidth: width - 8, shrink: true });
       this.font(6.8, 'normal', PDF_COLORS.muted);
       this.text(item.meta ?? '', x + 4, this.y + 21.5, { maxWidth: width - 8 });
     });
