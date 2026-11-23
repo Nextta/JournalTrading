@@ -105,6 +105,7 @@ pub fn run() {
             commands::save_report_pdf,
             installers::install_nt8_bridge,
             installers::install_atas_bridge,
+            installers::install_mt5_bridge,
             copy::commands::get_copy_overview,
             copy::commands::create_copy_group,
             copy::commands::update_copy_group,

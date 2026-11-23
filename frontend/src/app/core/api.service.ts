@@ -316,6 +316,10 @@ export class ApiService {
     return this.call('install_atas_bridge');
   }
 
+  installMt5Bridge(terminalDir: string): Promise<InstallResult> {
+    return this.call('install_mt5_bridge', { terminalDir });
+  }
+
   openDataDir(): Promise<void> {
     return this.call('open_data_dir');
   }

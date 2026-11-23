@@ -14,6 +14,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { open } from '@tauri-apps/plugin-dialog';
 import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../core/api.service';
@@ -54,7 +55,7 @@ export class SettingsPage {
   protected readonly backingUp = signal(false);
   protected readonly writingNt8 = signal(false);
   protected readonly writingAtas = signal(false);
-  protected readonly installing = signal<'nt8' | 'atas' | null>(null);
+  protected readonly installing = signal<'nt8' | 'atas' | 'mt5' | null>(null);
   protected readonly showKey = signal(false);
   protected port = 4477;
   protected timezoneMode: 'broker' | 'local' = 'broker';
@@ -194,13 +195,38 @@ export class SettingsPage {
     }
   }
 
-  protected async installBridge(target: 'nt8' | 'atas'): Promise<void> {
+  protected async installBridge(target: 'nt8' | 'atas' | 'mt5'): Promise<void> {
     if (this.installing()) return;
+    let terminalDir: string | null = null;
+    if (target === 'mt5') {
+      try {
+        const picked = await open({
+          directory: true,
+          multiple: false,
+          title: 'Selecciona la carpeta de instalación de MetaTrader 5',
+          defaultPath: 'C:\\Program Files',
+        });
+        terminalDir = typeof picked === 'string' ? picked : null;
+      } catch (error) {
+        this.notifications.error(error);
+        return;
+      }
+      if (!terminalDir) return;
+    }
     this.installing.set(target);
-    const title = target === 'nt8' ? 'Instalar AddOn de NinjaTrader 8' : 'Instalar AddOn de ATAS';
+    const titles = {
+      nt8: 'Instalar AddOn de NinjaTrader 8',
+      atas: 'Instalar AddOn de ATAS',
+      mt5: 'Instalar EA de MetaTrader 5',
+    };
+    const title = titles[target];
     try {
       const result: InstallResult =
-        target === 'nt8' ? await this.api.installNt8Bridge() : await this.api.installAtasBridge();
+        target === 'nt8'
+          ? await this.api.installNt8Bridge()
+          : target === 'atas'
+            ? await this.api.installAtasBridge()
+            : await this.api.installMt5Bridge(terminalDir!);
       await this.store.refreshSettings();
       this.dialog.open(InstallResultDialogComponent, {
         data: { title, result },

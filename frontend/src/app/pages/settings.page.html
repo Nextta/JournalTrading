@@ -48,7 +48,22 @@
             </div>
           </div>
 
+          @if (installing() === 'mt5') {
+            <mat-progress-bar mode="indeterminate" class="install-progress" />
+            <p class="text-xs muted help">Copiando y compilando el EA con MetaEditor…</p>
+          }
+
           <div class="settings-actions">
+            <button
+              mat-flat-button
+              color="primary"
+              [disabled]="installing() !== null"
+              (click)="installBridge('mt5')"
+              matTooltip="Elige la carpeta de instalación de tu MetaTrader 5. El EA se copia a ese terminal, se configura con la API key y el puerto y se compila. Repite para cada MT5."
+            >
+              <mat-icon>download</mat-icon>
+              {{ installing() === 'mt5' ? 'Instalando…' : 'Instalar EA MT5' }}
+            </button>
             <button mat-flat-button color="primary" [disabled]="saving()" (click)="save()">
               {{ saving() ? 'Guardando…' : 'Guardar ajustes' }}
             </button>
@@ -262,18 +277,31 @@
         <h3>MetaTrader 5</h3>
         <ol>
           <li>
-            En MT5, ve a <strong>Herramientas &gt; Opciones &gt; Asesores expertos</strong>, activa
+            Pulsa <strong>Instalar EA MT5</strong> en la tarjeta <strong>Puente local MT5</strong> de
+            arriba y selecciona la carpeta donde está instalado tu MetaTrader 5 (la que contiene
+            <code>terminal64.exe</code>, por ejemplo <code>C:\Program Files\MetaTrader 5</code>). Si
+            tienes varios MT5, repite el proceso con cada uno. La app copia el EA a ese terminal, le
+            pone la API key y el puerto actuales y lo compila con MetaEditor. No hace falta cerrar MT5.
+          </li>
+          <li>
+            En ese MT5, ve a <strong>Herramientas &gt; Opciones &gt; Asesores expertos</strong>, activa
             <strong>Permitir WebRequest para las siguientes URL</strong> y añade
             <code>{{ apiOrigin() }}</code>. Sin esto, el EA no puede comunicarse con la app.
           </li>
-          <li>Compila <code>TradingJournalBridge.mq5</code> en MetaEditor y adjúntalo a un gráfico.</li>
           <li>
-            En las propiedades del EA, configura el endpoint
-            <code>{{ endpoint() }}</code> y la API key.
+            En el <strong>Navegador</strong>, dentro de <strong>Asesores expertos</strong>, arrastra
+            <strong>TradingJournalBridge</strong> a un gráfico (si no aparece, haz clic derecho y
+            <em>Actualizar</em>). Basta un gráfico por terminal.
           </li>
-          <li>Activa el trading algorítmico y deja el terminal abierto.</li>
+          <li>Activa el botón <strong>Algo Trading</strong> y deja el terminal abierto.</li>
           <li>El EA enviará un heartbeat cada 5 segundos y sincronizará el historial automáticamente.</li>
         </ol>
+        <p class="text-xs muted help">
+          Si cambias el puerto o regeneras la API key, vuelve a pulsar <strong>Instalar EA MT5</strong>
+          para los nuevos gráficos, o actualiza <code>InpApiUrl</code> e <code>InpApiKey</code> en las
+          propiedades del EA de los gráficos donde ya esté puesto. Para instalarlo a mano, compila
+          <code>mt5\TradingJournalBridge.mq5</code> en MetaEditor y configura esos dos campos.
+        </p>
 
         <h3>NinjaTrader 8</h3>
         <ol>
@@ -340,9 +368,9 @@
         </p>
         <ol>
           <li>
-            Actualiza los bridges a la última versión: el EA de MT5 (1.2.0) y, con los botones
-            <strong>Instalar AddOn NT8</strong> e <strong>Instalar AddOn ATAS</strong> de arriba, el
-            AddOn de NinjaTrader y el indicador de ATAS.
+            Actualiza los bridges a la última versión con los botones
+            <strong>Instalar EA MT5</strong> (en cada terminal), <strong>Instalar AddOn NT8</strong> e
+            <strong>Instalar AddOn ATAS</strong> de arriba.
           </li>
           <li>
             <strong>MT5</strong>: deja el EA abierto en cada terminal, con el botón
