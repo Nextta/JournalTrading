@@ -20,7 +20,7 @@
 
 .panic-btn {
   --mdc-outlined-button-label-text-color: var(--neg);
-  --mdc-outlined-button-outline-color: rgba(242, 102, 111, 0.45);
+  --mdc-outlined-button-outline-color: rgba(var(--neg-rgb), 0.45);
 }
 
 .page-progress {
@@ -34,10 +34,10 @@
   gap: 10px;
   margin-bottom: 16px;
   padding: 12px 14px;
-  border: 1px solid rgba(245, 184, 75, 0.3);
+  border: 1px solid rgba(var(--warning-rgb), 0.3);
   border-radius: var(--radius);
-  background: rgba(245, 184, 75, 0.08);
-  color: #f7d79c;
+  background: rgba(var(--warning-rgb), 0.08);
+  color: var(--warning-text);
   font-size: 12.5px;
   line-height: 1.5;
 
@@ -113,7 +113,7 @@
 
   &.follower {
     color: var(--info);
-    background: rgba(92, 200, 255, 0.12);
+    background: rgba(var(--info-rgb), 0.12);
   }
 }
 
@@ -206,7 +206,7 @@
 
   &[data-tone='warn'] {
     color: var(--warning);
-    background: rgba(245, 184, 75, 0.12);
+    background: rgba(var(--warning-rgb), 0.12);
   }
 
   &[data-tone='bad'] {
@@ -216,7 +216,7 @@
 
   &[data-tone='wait'] {
     color: var(--info);
-    background: rgba(92, 200, 255, 0.12);
+    background: rgba(var(--info-rgb), 0.12);
   }
 }
 

@@ -21,6 +21,7 @@ import { ApiService } from '../core/api.service';
 import type { InstallResult, SettingsResponse } from '../core/models';
 import { NotificationsService } from '../core/notifications.service';
 import { Store } from '../core/store';
+import { ThemeService } from '../core/theme.service';
 import {
   ConfirmDialogComponent,
   type ConfirmDialogResult,
@@ -45,6 +46,7 @@ import { InstallResultDialogComponent } from './install-result.dialog';
 })
 export class SettingsPage {
   protected readonly store = inject(Store);
+  protected readonly theme = inject(ThemeService);
   private readonly api = inject(ApiService);
   private readonly dialog = inject(MatDialog);
   private readonly notifications = inject(NotificationsService);

@@ -253,6 +253,37 @@
 
       <section class="card settings-card">
         <div class="card-header">
+          <div class="card-title"><span class="material-symbols-outlined">palette</span>Apariencia</div>
+        </div>
+        <div class="settings-body">
+          <p class="text-sm muted">Elige el tema de la aplicación. Se guarda en este equipo.</p>
+          <div class="theme-switch" role="radiogroup" aria-label="Tema">
+            <button
+              type="button"
+              role="radio"
+              [attr.aria-checked]="!theme.isLight()"
+              [class.active]="!theme.isLight()"
+              (click)="theme.set('dark')"
+            >
+              <span class="material-symbols-outlined">dark_mode</span>
+              Oscuro
+            </button>
+            <button
+              type="button"
+              role="radio"
+              [attr.aria-checked]="theme.isLight()"
+              [class.active]="theme.isLight()"
+              (click)="theme.set('light')"
+            >
+              <span class="material-symbols-outlined">light_mode</span>
+              Claro
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card settings-card">
+        <div class="card-header">
           <div class="card-title"><span class="material-symbols-outlined">info</span>Aplicación</div>
         </div>
         <div class="settings-body">

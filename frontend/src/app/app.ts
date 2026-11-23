@@ -18,6 +18,7 @@ import { ApiService } from './core/api.service';
 import { accountRef, formatMoney, initials, todayIso, formatDateLong } from './core/format';
 import { NotificationsService } from './core/notifications.service';
 import { Store } from './core/store';
+import { ThemeService } from './core/theme.service';
 
 interface NavItem {
   label: string;
@@ -42,6 +43,7 @@ interface NavItem {
 })
 export class App {
   protected readonly store = inject(Store);
+  protected readonly theme = inject(ThemeService);
   private readonly api = inject(ApiService);
   private readonly notifications = inject(NotificationsService);
   private readonly router = inject(Router);

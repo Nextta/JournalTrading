@@ -41,7 +41,7 @@
   margin-top: 5px;
   border-radius: 50%;
   flex: none;
-  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.035);
+  box-shadow: 0 0 0 4px rgba(var(--overlay-rgb), 0.035);
 }
 
 .group-title {
@@ -70,7 +70,7 @@
 .default-pill {
   color: var(--accent);
   background: var(--accent-soft);
-  border: 1px solid rgba(109, 124, 255, 0.22);
+  border: 1px solid rgba(var(--accent-rgb), 0.22);
 }
 
 .pill-dot {
@@ -88,7 +88,7 @@
   padding: 10px;
   border: 1px solid var(--border);
   border-radius: 9px;
-  background: rgba(6, 10, 18, 0.22);
+  background: rgba(var(--well-rgb), 0.22);
 }
 
 .preview-item {

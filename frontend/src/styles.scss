@@ -7,13 +7,18 @@ html {
       color: (
         primary: mat.$azure-palette,
         tertiary: mat.$violet-palette,
-        theme-type: dark,
+        theme-type: color-scheme,
       ),
       density: 0,
     )
   );
 }
 
+html[data-theme='light'] {
+  color-scheme: light;
+}
+
+/* Tema oscuro (por defecto) */
 :root {
   --bg: #0b0f17;
   --surface-1: #0f1521;
@@ -22,6 +27,7 @@ html {
   --surface-4: #1c283c;
   --border: #1e2a3d;
   --border-strong: #2a3950;
+  --border-hover: #3b4d6b;
   --text: #e7ecf5;
   --muted: #8b93a7;
   --muted-2: #626c81;
@@ -36,6 +42,91 @@ html {
   --radius: 12px;
   --radius-lg: 16px;
   --shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+
+  /* Canales RGB para tintes translúcidos */
+  --bg-rgb: 11, 15, 23;
+  --overlay-rgb: 255, 255, 255;
+  --well-rgb: 6, 10, 18;
+  --border-rgb: 30, 42, 61;
+  --accent-rgb: 109, 124, 255;
+  --pos-rgb: 45, 212, 160;
+  --neg-rgb: 242, 102, 111;
+  --warning-rgb: 245, 184, 75;
+  --info-rgb: 92, 200, 255;
+  --muted-rgb: 139, 147, 167;
+
+  /* Texto sobre tintes */
+  --accent-text: #b8bfff;
+  --pos-text: #8fe3c5;
+  --neg-text: #ffb0b5;
+  --warning-text: #f7d79c;
+  --violet-text: #c4b5fd;
+  --teal-text: #5eead4;
+  --on-accent: #0b0f17;
+
+  /* Componentes */
+  --scroll-thumb: #243147;
+  --scroll-thumb-hover: #31415d;
+  --tooltip-bg: #1d2940;
+  --snack-success-bg: #113328;
+  --snack-success-text: #b9f5df;
+  --snack-error-bg: #3a171b;
+  --snack-error-text: #ffc9cd;
+  --snack-info-bg: #18233a;
+  --snack-info-text: #c9d7ff;
+}
+
+/* Tema claro */
+html[data-theme='light'] {
+  --bg: #f3f5f9;
+  --surface-1: #ffffff;
+  --surface-2: #f8f9fc;
+  --surface-3: #eef1f6;
+  --surface-4: #e5e9f1;
+  --border: #e1e6ef;
+  --border-strong: #c9d1de;
+  --border-hover: #aab4c5;
+  --text: #141a26;
+  --muted: #5b6478;
+  --muted-2: #8a93a6;
+  --accent: #5563f0;
+  --accent-soft: rgba(85, 99, 240, 0.1);
+  --pos: #0e9f74;
+  --pos-soft: rgba(14, 159, 116, 0.12);
+  --neg: #dc3d4a;
+  --neg-soft: rgba(220, 61, 74, 0.1);
+  --warning: #c98512;
+  --info: #0b8fd1;
+  --shadow: 0 12px 32px rgba(20, 30, 50, 0.08);
+
+  --bg-rgb: 243, 245, 249;
+  --overlay-rgb: 15, 23, 42;
+  --well-rgb: 120, 135, 160;
+  --border-rgb: 225, 230, 239;
+  --accent-rgb: 85, 99, 240;
+  --pos-rgb: 14, 159, 116;
+  --neg-rgb: 220, 61, 74;
+  --warning-rgb: 201, 133, 18;
+  --info-rgb: 11, 143, 209;
+  --muted-rgb: 91, 100, 120;
+
+  --accent-text: #3f4bd1;
+  --pos-text: #0b7a5a;
+  --neg-text: #b8303c;
+  --warning-text: #8a5a06;
+  --violet-text: #6d3fd6;
+  --teal-text: #0f8577;
+  --on-accent: #ffffff;
+
+  --scroll-thumb: #c9d1de;
+  --scroll-thumb-hover: #aab4c5;
+  --tooltip-bg: #1f2737;
+  --snack-success-bg: #e3f6ef;
+  --snack-success-text: #0b5e46;
+  --snack-error-bg: #fdecee;
+  --snack-error-text: #9b2530;
+  --snack-info-bg: #e9ecfd;
+  --snack-info-text: #2f3aa8;
 }
 
 * {
@@ -87,13 +178,13 @@ a {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #243147;
+  background: var(--scroll-thumb);
   border: 2px solid var(--bg);
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #31415d;
+  background: var(--scroll-thumb-hover);
 }
 
 .material-symbols-outlined {
@@ -181,9 +272,9 @@ a {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.016), transparent 32%),
+    linear-gradient(180deg, rgba(var(--overlay-rgb), 0.016), transparent 32%),
     var(--surface-1);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.025) inset;
+  box-shadow: 0 1px 0 rgba(var(--overlay-rgb), 0.025) inset;
 }
 
 .card-header {
@@ -350,22 +441,22 @@ a {
   }
 
   &.buy {
-    color: #8fe3c5;
-    background: rgba(45, 212, 160, 0.12);
+    color: var(--pos-text);
+    background: rgba(var(--pos-rgb), 0.12);
   }
 
   &.sell {
-    color: #ffb0b5;
-    background: rgba(242, 102, 111, 0.12);
+    color: var(--neg-text);
+    background: rgba(var(--neg-rgb), 0.12);
   }
 
   &.pending {
     color: var(--warning);
-    background: rgba(245, 184, 75, 0.12);
+    background: rgba(var(--warning-rgb), 0.12);
   }
 
   &.accent {
-    color: #b3baff;
+    color: var(--accent-text);
     background: var(--accent-soft);
   }
 }
@@ -429,7 +520,7 @@ a {
 
   td {
     padding: 10px 12px;
-    border-bottom: 1px solid rgba(30, 42, 61, 0.65);
+    border-bottom: 1px solid rgba(var(--border-rgb), 0.65);
     white-space: nowrap;
   }
 
@@ -437,7 +528,7 @@ a {
     transition: background 120ms ease;
 
     &:hover {
-      background: rgba(255, 255, 255, 0.022);
+      background: rgba(var(--overlay-rgb), 0.022);
     }
 
     &:last-child td {
@@ -520,7 +611,7 @@ a {
 .mat-mdc-form-field {
   --mdc-outlined-text-field-container-shape: 10px;
   --mdc-outlined-text-field-outline-color: var(--border-strong);
-  --mdc-outlined-text-field-hover-outline-color: #3b4d6b;
+  --mdc-outlined-text-field-hover-outline-color: var(--border-hover);
   --mdc-outlined-text-field-focus-outline-color: var(--accent);
   --mdc-outlined-text-field-label-text-color: var(--muted);
   --mdc-outlined-text-field-input-text-color: var(--text);
@@ -564,18 +655,18 @@ a {
 }
 
 .snack-success {
-  --mdc-snackbar-container-color: #113328;
-  --mdc-snackbar-supporting-text-color: #b9f5df;
+  --mdc-snackbar-container-color: var(--snack-success-bg);
+  --mdc-snackbar-supporting-text-color: var(--snack-success-text);
 }
 
 .snack-error {
-  --mdc-snackbar-container-color: #3a171b;
-  --mdc-snackbar-supporting-text-color: #ffc9cd;
+  --mdc-snackbar-container-color: var(--snack-error-bg);
+  --mdc-snackbar-supporting-text-color: var(--snack-error-text);
 }
 
 .snack-info {
-  --mdc-snackbar-container-color: #18233a;
-  --mdc-snackbar-supporting-text-color: #c9d7ff;
+  --mdc-snackbar-container-color: var(--snack-info-bg);
+  --mdc-snackbar-supporting-text-color: var(--snack-info-text);
 }
 
 .mat-mdc-snack-bar-container .mat-mdc-button {
@@ -596,7 +687,7 @@ a {
 }
 
 .mat-mdc-checkbox {
-  --mdc-checkbox-selected-checkmark-color: #0b0f17;
+  --mdc-checkbox-selected-checkmark-color: var(--on-accent);
   --mdc-checkbox-selected-focus-icon-color: var(--accent);
   --mdc-checkbox-selected-hover-icon-color: var(--accent);
   --mdc-checkbox-selected-icon-color: var(--accent);
@@ -605,8 +696,8 @@ a {
 }
 
 .mat-mdc-tooltip .mdc-tooltip__surface {
-  background: #1d2940 !important;
-  color: var(--text) !important;
+  background: var(--tooltip-bg) !important;
+  color: #e7ecf5 !important;
   font-size: 11px !important;
 }
 

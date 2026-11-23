@@ -53,6 +53,7 @@ import type {
 } from '../core/models';
 import { NotificationsService } from '../core/notifications.service';
 import { Store } from '../core/store';
+import { ThemeService } from '../core/theme.service';
 import { ChartComponent } from '../shared/chart.component';
 import { openReportDialog } from './report-download.dialog';
 
@@ -82,6 +83,7 @@ interface HeatmapRow {
 })
 export class DashboardPage {
   protected readonly store = inject(Store);
+  private readonly theme = inject(ThemeService);
   private readonly api = inject(ApiService);
   private readonly notifications = inject(NotificationsService);
   private readonly dialog = inject(MatDialog);
@@ -241,15 +243,16 @@ export class DashboardPage {
 
   protected readonly equityOptions = computed<EChartsCoreOption>(() => {
     const points = this.stats()?.equity ?? [];
+    const c = this.theme.chart();
     return {
       backgroundColor: 'transparent',
       animationDuration: 500,
       grid: { left: 56, right: 18, top: 18, bottom: 28 },
       tooltip: {
         trigger: 'axis',
-        backgroundColor: '#172132',
-        borderColor: '#2a3950',
-        textStyle: { color: '#e7ecf5', fontSize: 11 },
+        backgroundColor: c.tooltipBg,
+        borderColor: c.tooltipBorder,
+        textStyle: { color: c.tooltipText, fontSize: 11 },
         formatter: (params: unknown) => {
           const list = params as Array<{ axisValue: string; value: number }>;
           if (!list.length) return '';
@@ -260,15 +263,15 @@ export class DashboardPage {
         type: 'category',
         data: points.map((point) => point.date),
         boundaryGap: false,
-        axisLine: { lineStyle: { color: '#1e2a3d' } },
+        axisLine: { lineStyle: { color: c.axisLine } },
         axisTick: { show: false },
-        axisLabel: { color: '#626c81', fontSize: 10, hideOverlap: true },
+        axisLabel: { color: c.axisLabel, fontSize: 10, hideOverlap: true },
       },
       yAxis: {
         type: 'value',
         scale: true,
-        axisLabel: { color: '#626c81', fontSize: 10 },
-        splitLine: { lineStyle: { color: 'rgba(30, 42, 61, 0.65)' } },
+        axisLabel: { color: c.axisLabel, fontSize: 10 },
+        splitLine: { lineStyle: { color: c.grid } },
       },
       series: [
         {
@@ -276,7 +279,7 @@ export class DashboardPage {
           data: points.map((point) => point.cumulative),
           smooth: true,
           symbol: 'none',
-          lineStyle: { color: '#6d7cff', width: 2.2 },
+          lineStyle: { color: c.accent, width: 2.2 },
           areaStyle: {
             color: {
               type: 'linear',
@@ -285,8 +288,8 @@ export class DashboardPage {
               x2: 0,
               y2: 1,
               colorStops: [
-                { offset: 0, color: 'rgba(109, 124, 255, 0.34)' },
-                { offset: 1, color: 'rgba(109, 124, 255, 0)' },
+                { offset: 0, color: `rgba(${c.accentRgb}, 0.3)` },
+                { offset: 1, color: `rgba(${c.accentRgb}, 0)` },
               ],
             },
           },
@@ -510,12 +513,12 @@ export class DashboardPage {
   private periodBackground(period: CalendarPeriod | null, mode: ValueMode, maxAbs: number): string {
     const value = this.periodValue(period, mode);
     if (value === null) {
-      return period && period.trades > 0 ? 'rgba(139, 147, 167, 0.08)' : 'transparent';
+      return period && period.trades > 0 ? 'rgba(var(--muted-rgb), 0.08)' : 'transparent';
     }
-    if (value === 0) return 'rgba(139, 147, 167, 0.08)';
+    if (value === 0) return 'rgba(var(--muted-rgb), 0.08)';
     const ratio = maxAbs > 0 ? Math.min(1, Math.abs(value) / maxAbs) : 0;
     const alpha = (0.08 + ratio * 0.3).toFixed(3);
-    return value > 0 ? `rgba(45, 212, 160, ${alpha})` : `rgba(242, 102, 111, ${alpha})`;
+    return value > 0 ? `rgba(var(--pos-rgb), ${alpha})` : `rgba(var(--neg-rgb), ${alpha})`;
   }
 
   private periodTooltip(period: CalendarPeriod | null, title: string): string {

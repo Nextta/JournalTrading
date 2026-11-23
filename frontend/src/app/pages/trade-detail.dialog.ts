@@ -41,6 +41,7 @@ import type {
 import { TIMEFRAMES } from '../core/models';
 import { NotificationsService } from '../core/notifications.service';
 import { Store } from '../core/store';
+import { ThemeService } from '../core/theme.service';
 import { barIndexAt, formatLots, parseServerTime, resolveExitReason } from '../core/trade-chart';
 import { ChartComponent } from '../shared/chart.component';
 import { ImageGalleryComponent } from '../shared/image-gallery.component';
@@ -75,6 +76,7 @@ export class TradeDetailDialogComponent {
   private readonly ref = inject(MatDialogRef<TradeDetailDialogComponent, boolean>);
   private readonly notifications = inject(NotificationsService);
   protected readonly store = inject(Store);
+  private readonly theme = inject(ThemeService);
 
   protected readonly trade = signal<Trade | null>(null);
   protected readonly loading = signal(true);
@@ -118,8 +120,9 @@ export class TradeDetailDialogComponent {
       trade.closePrice === null
         ? null
         : barIndexAt(bars, parseServerTime(trade.closeTimeServer), series.timeframe);
+    const c = this.theme.chart();
     const isBuy = trade.side === 'buy';
-    const sideColor = isBuy ? '#2dd4a0' : '#f2666f';
+    const sideColor = isBuy ? c.pos : c.neg;
     const entryText = isBuy ? 'entry buy' : 'entry sell';
     const priceValues = bars.flatMap((bar) => [bar.low, bar.high]);
     if (entryIndex !== null) priceValues.push(trade.openPrice);
@@ -139,15 +142,15 @@ export class TradeDetailDialogComponent {
     const lines: Record<string, unknown>[] = [
       {
         yAxis: trade.openPrice,
-        label: { formatter: 'Entrada', color: '#b8bfff', position: 'insideEndTop' },
-        lineStyle: { color: '#6d7cff', type: 'dashed', width: 1 },
+        label: { formatter: 'Entrada', color: c.accentText, position: 'insideEndTop' },
+        lineStyle: { color: c.accent, type: 'dashed', width: 1 },
       },
     ];
     if (trade.closePrice !== null) {
       lines.push({
         yAxis: trade.closePrice,
-        label: { formatter: 'Salida', color: '#e5e9f2', position: 'insideEndBottom' },
-        lineStyle: { color: '#8a99b3', type: 'dashed', width: 1 },
+        label: { formatter: 'Salida', color: c.text, position: 'insideEndBottom' },
+        lineStyle: { color: c.exitLine, type: 'dashed', width: 1 },
       });
     }
 
@@ -160,7 +163,7 @@ export class TradeDetailDialogComponent {
         symbolSize: 12,
         symbolRotate: isBuy ? 0 : 180,
         symbolOffset: isBuy ? [0, 8] : [0, -8],
-        itemStyle: { color: sideColor, borderColor: '#0b0f17', borderWidth: 1 },
+        itemStyle: { color: sideColor, borderColor: c.markerBorder, borderWidth: 1 },
         label: {
           show: true,
           position: isBuy ? 'bottom' : 'top',
@@ -169,7 +172,7 @@ export class TradeDetailDialogComponent {
           color: sideColor,
           fontSize: 9.5,
           fontWeight: 700,
-          backgroundColor: 'rgba(11, 15, 23, 0.84)',
+          backgroundColor: c.labelBg,
           borderColor: sideColor,
           borderWidth: 1,
           borderRadius: 3,
@@ -186,7 +189,7 @@ export class TradeDetailDialogComponent {
         symbolSize: 12,
         symbolRotate: isBuy ? 0 : 180,
         symbolOffset: isBuy ? [0, 8] : [0, -8],
-        itemStyle: { color: sideColor, borderColor: '#0b0f17', borderWidth: 1 },
+        itemStyle: { color: sideColor, borderColor: c.markerBorder, borderWidth: 1 },
         label: {
           show: true,
           position: isBuy ? 'bottom' : 'top',
@@ -195,7 +198,7 @@ export class TradeDetailDialogComponent {
           color: sideColor,
           fontSize: 9.5,
           fontWeight: 700,
-          backgroundColor: 'rgba(11, 15, 23, 0.84)',
+          backgroundColor: c.labelBg,
           borderColor: sideColor,
           borderWidth: 1,
           borderRadius: 3,
@@ -232,37 +235,37 @@ export class TradeDetailDialogComponent {
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'cross' },
-        backgroundColor: 'rgba(15, 21, 33, 0.96)',
-        borderColor: 'rgba(255, 255, 255, 0.12)',
-        textStyle: { color: '#e5e9f2', fontSize: 11 },
+        backgroundColor: c.tooltipBg,
+        borderColor: c.tooltipBorder,
+        textStyle: { color: c.tooltipText, fontSize: 11 },
       },
       xAxis: {
         type: 'category',
         data: labels,
         boundaryGap: true,
-        axisLine: { lineStyle: { color: 'rgba(255,255,255,0.12)' } },
-        axisLabel: { color: '#8a99b3', fontSize: 9, hideOverlap: true },
+        axisLine: { lineStyle: { color: c.axisLine } },
+        axisLabel: { color: c.axis, fontSize: 9, hideOverlap: true },
         splitLine: { show: false },
       },
       yAxis: {
         min: axisMin,
         max: axisMax,
         axisLabel: {
-          color: '#8a99b3',
+          color: c.axis,
           fontSize: 9,
           formatter: (value: number) => value.toFixed(axisDecimals),
         },
-        splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
+        splitLine: { lineStyle: { color: c.grid } },
       },
       series: [
         {
           type: 'candlestick',
           data: bars.map((bar) => [bar.open, bar.close, bar.low, bar.high]),
           itemStyle: {
-            color: '#2dd4a0',
-            color0: '#f2666f',
-            borderColor: '#2dd4a0',
-            borderColor0: '#f2666f',
+            color: c.pos,
+            color0: c.neg,
+            borderColor: c.pos,
+            borderColor0: c.neg,
           },
           markLine: {
             symbol: 'none',

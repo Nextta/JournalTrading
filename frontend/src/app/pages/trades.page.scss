@@ -122,7 +122,7 @@
     cursor: pointer;
 
     &:hover {
-      background: rgba(109, 124, 255, 0.055);
+      background: rgba(var(--accent-rgb), 0.055);
     }
   }
 }
