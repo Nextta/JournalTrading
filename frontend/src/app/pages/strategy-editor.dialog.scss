@@ -42,7 +42,7 @@
   }
 
   &.selected {
-    border-color: rgba(255, 255, 255, 0.75);
+    border-color: rgba(var(--overlay-rgb), 0.75);
   }
 
   .material-symbols-outlined {
@@ -96,7 +96,7 @@
   padding: 7px;
   border: 1px solid var(--border);
   border-radius: 9px;
-  background: rgba(255, 255, 255, 0.015);
+  background: rgba(var(--overlay-rgb), 0.015);
 }
 
 .item-section {

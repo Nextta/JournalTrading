@@ -7,6 +7,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{Mutex, RwLock};
 
 use crate::atas::AtasRuntime;
+use crate::copy::CopyRuntime;
 use crate::db;
 use crate::error::{AppError, AppResult};
 use crate::models::BridgeStatus;
@@ -22,6 +23,7 @@ pub struct AppState {
     pub api_key: Arc<RwLock<String>>,
     pub bridge: Arc<BridgeServerManager>,
     pub atas: Arc<AtasRuntime>,
+    pub copy: Arc<CopyRuntime>,
 }
 
 pub struct BridgeServerManager {
@@ -70,6 +72,7 @@ impl AppState {
                 handle: Mutex::new(None),
             }),
             atas: Arc::new(AtasRuntime::default()),
+            copy: Arc::new(CopyRuntime::default()),
         })
     }
 

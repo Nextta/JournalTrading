@@ -51,7 +51,7 @@
   padding: 14px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: rgba(6, 10, 18, 0.28);
+  background: rgba(var(--well-rgb), 0.28);
 }
 
 .chart-head {
@@ -95,7 +95,7 @@
 
   &.active {
     background: var(--accent-soft);
-    color: #b8bfff;
+    color: var(--accent-text);
   }
 }
 
@@ -159,7 +159,7 @@
     justify-content: space-between;
     gap: 8px;
     padding: 5px 0;
-    border-bottom: 1px solid rgba(30, 42, 61, 0.5);
+    border-bottom: 1px solid rgba(var(--border-rgb), 0.5);
     min-width: 0;
   }
 

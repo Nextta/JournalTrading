@@ -41,7 +41,7 @@
       }
       <div class="version">
         <span class="material-symbols-outlined">verified_user</span>
-        <span>v{{ store.settings()?.version ?? '0.1.0' }}</span>
+        <span>v{{ store.settings()?.version ?? '' }}</span>
       </div>
     </div>
   </aside>
@@ -63,6 +63,16 @@
       </div>
 
       <div class="top-actions">
+        <button
+          mat-icon-button
+          class="icon-btn"
+          (click)="theme.toggle()"
+          [matTooltip]="theme.isLight() ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'"
+          [attr.aria-label]="theme.isLight() ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'"
+        >
+          <span class="material-symbols-outlined">{{ theme.isLight() ? 'dark_mode' : 'light_mode' }}</span>
+        </button>
+
         <button
           mat-stroked-button
           class="sync-btn"

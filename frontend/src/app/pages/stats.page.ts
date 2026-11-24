@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
@@ -37,13 +38,10 @@ import type {
 } from '../core/models';
 import { NotificationsService } from '../core/notifications.service';
 import { Store } from '../core/store';
+import { ThemeService } from '../core/theme.service';
 import { ChartComponent } from '../shared/chart.component';
+import { openReportDialog } from './report-download.dialog';
 
-const AXIS_COLOR = '#8a99b3';
-const GRID_COLOR = 'rgba(255, 255, 255, 0.05)';
-const LINE_COLOR = '#6d7cff';
-const POS_COLOR = '#2dd4a0';
-const NEG_COLOR = '#f2666f';
 
 @Component({
   selector: 'app-stats-page',
@@ -63,8 +61,10 @@ const NEG_COLOR = '#f2666f';
 })
 export class StatsPage {
   protected readonly store = inject(Store);
+  private readonly theme = inject(ThemeService);
   private readonly api = inject(ApiService);
   private readonly notifications = inject(NotificationsService);
+  private readonly dialog = inject(MatDialog);
 
   protected readonly today = todayIso();
   protected readonly loading = signal(false);
@@ -85,6 +85,7 @@ export class StatsPage {
 
   protected readonly equityOptions = computed<EChartsCoreOption>(() => {
     const stats = this.stats();
+    const c = this.theme.chart();
     const points = stats?.equity ?? [];
     return {
       animation: false,
@@ -92,21 +93,21 @@ export class StatsPage {
       grid: { left: 64, right: 20, top: 20, bottom: 34 },
       tooltip: {
         trigger: 'axis',
-        backgroundColor: 'rgba(15, 21, 33, 0.96)',
-        borderColor: 'rgba(255, 255, 255, 0.12)',
-        textStyle: { color: '#e5e9f2', fontSize: 11 },
+        backgroundColor: c.tooltipBg,
+        borderColor: c.tooltipBorder,
+        textStyle: { color: c.tooltipText, fontSize: 11 },
       },
       xAxis: {
         type: 'category',
         data: points.map((point) => point.date),
-        axisLine: { lineStyle: { color: 'rgba(255,255,255,0.12)' } },
-        axisLabel: { color: AXIS_COLOR, fontSize: 9, hideOverlap: true },
+        axisLine: { lineStyle: { color: c.axisLine } },
+        axisLabel: { color: c.axis, fontSize: 9, hideOverlap: true },
         splitLine: { show: false },
       },
       yAxis: {
         type: 'value',
-        axisLabel: { color: AXIS_COLOR, fontSize: 9 },
-        splitLine: { lineStyle: { color: GRID_COLOR } },
+        axisLabel: { color: c.axis, fontSize: 9 },
+        splitLine: { lineStyle: { color: c.grid } },
       },
       series: [
         {
@@ -114,7 +115,7 @@ export class StatsPage {
           data: points.map((point) => point.cumulative),
           smooth: 0.2,
           showSymbol: false,
-          lineStyle: { color: LINE_COLOR, width: 1.8 },
+          lineStyle: { color: c.accent, width: 1.8 },
           areaStyle: {
             color: {
               type: 'linear',
@@ -123,8 +124,8 @@ export class StatsPage {
               x2: 0,
               y2: 1,
               colorStops: [
-                { offset: 0, color: 'rgba(109, 124, 255, 0.28)' },
-                { offset: 1, color: 'rgba(109, 124, 255, 0.01)' },
+                { offset: 0, color: `rgba(${c.accentRgb}, 0.28)` },
+                { offset: 1, color: `rgba(${c.accentRgb}, 0.01)` },
               ],
             },
           },
@@ -135,6 +136,7 @@ export class StatsPage {
 
   protected readonly dailyOptions = computed<EChartsCoreOption>(() => {
     const stats = this.stats();
+    const c = this.theme.chart();
     const days = stats?.dailyPnl ?? [];
     return {
       animation: false,
@@ -142,28 +144,28 @@ export class StatsPage {
       grid: { left: 58, right: 16, top: 18, bottom: 30 },
       tooltip: {
         trigger: 'axis',
-        backgroundColor: 'rgba(15, 21, 33, 0.96)',
-        borderColor: 'rgba(255, 255, 255, 0.12)',
-        textStyle: { color: '#e5e9f2', fontSize: 11 },
+        backgroundColor: c.tooltipBg,
+        borderColor: c.tooltipBorder,
+        textStyle: { color: c.tooltipText, fontSize: 11 },
       },
       xAxis: {
         type: 'category',
         data: days.map((day) => day.date),
-        axisLine: { lineStyle: { color: 'rgba(255,255,255,0.12)' } },
-        axisLabel: { color: AXIS_COLOR, fontSize: 9, hideOverlap: true },
+        axisLine: { lineStyle: { color: c.axisLine } },
+        axisLabel: { color: c.axis, fontSize: 9, hideOverlap: true },
         splitLine: { show: false },
       },
       yAxis: {
         type: 'value',
-        axisLabel: { color: AXIS_COLOR, fontSize: 9 },
-        splitLine: { lineStyle: { color: GRID_COLOR } },
+        axisLabel: { color: c.axis, fontSize: 9 },
+        splitLine: { lineStyle: { color: c.grid } },
       },
       series: [
         {
           type: 'bar',
           data: days.map((day) => ({
             value: day.net,
-            itemStyle: { color: day.net >= 0 ? POS_COLOR : NEG_COLOR, opacity: 0.82 },
+            itemStyle: { color: day.net >= 0 ? c.pos : c.neg, opacity: 0.82 },
           })),
           barMaxWidth: 14,
         },
@@ -173,6 +175,7 @@ export class StatsPage {
 
   protected readonly rOptions = computed<EChartsCoreOption>(() => {
     const stats = this.stats();
+    const c = this.theme.chart();
     const buckets = stats?.rDistribution ?? [];
     return {
       animation: false,
@@ -180,28 +183,28 @@ export class StatsPage {
       grid: { left: 42, right: 16, top: 18, bottom: 30 },
       tooltip: {
         trigger: 'axis',
-        backgroundColor: 'rgba(15, 21, 33, 0.96)',
-        borderColor: 'rgba(255, 255, 255, 0.12)',
-        textStyle: { color: '#e5e9f2', fontSize: 11 },
+        backgroundColor: c.tooltipBg,
+        borderColor: c.tooltipBorder,
+        textStyle: { color: c.tooltipText, fontSize: 11 },
       },
       xAxis: {
         type: 'category',
         data: buckets.map((bucket) => bucket.label),
-        axisLine: { lineStyle: { color: 'rgba(255,255,255,0.12)' } },
-        axisLabel: { color: AXIS_COLOR, fontSize: 9 },
+        axisLine: { lineStyle: { color: c.axisLine } },
+        axisLabel: { color: c.axis, fontSize: 9 },
         splitLine: { show: false },
       },
       yAxis: {
         type: 'value',
-        axisLabel: { color: AXIS_COLOR, fontSize: 9 },
-        splitLine: { lineStyle: { color: GRID_COLOR } },
+        axisLabel: { color: c.axis, fontSize: 9 },
+        splitLine: { lineStyle: { color: c.grid } },
       },
       series: [
         {
           type: 'bar',
           data: buckets.map((bucket) => bucket.count),
           barMaxWidth: 26,
-          itemStyle: { color: LINE_COLOR, opacity: 0.8, borderRadius: [3, 3, 0, 0] },
+          itemStyle: { color: c.accent, opacity: 0.8, borderRadius: [3, 3, 0, 0] },
         },
       ],
     };
@@ -210,6 +213,11 @@ export class StatsPage {
   protected readonly formatDateNumeric = formatDateNumeric;
   protected readonly formatNumber = formatNumber;
   protected readonly formatR = formatR;
+
+  protected openReport(): void {
+    const account = this.store.activeAccount();
+    if (account) openReportDialog(this.dialog, account);
+  }
 
   constructor() {
     effect(() => {

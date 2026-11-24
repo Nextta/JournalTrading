@@ -53,7 +53,7 @@ fn nt8_config_path() -> Option<PathBuf> {
     nt8_custom_dir().map(|dir| dir.join("JournalTradingBridge.json"))
 }
 
-async fn write_nt8_config_file(state: &AppState, force: bool) -> AppResult<Option<String>> {
+pub(crate) async fn write_nt8_config_file(state: &AppState, force: bool) -> AppResult<Option<String>> {
     let Some(path) = nt8_config_path() else {
         if force {
             return Err(AppError::NotFound(
@@ -89,7 +89,7 @@ fn atas_config_path() -> Option<PathBuf> {
     })
 }
 
-async fn write_atas_config_file(state: &AppState, force: bool) -> AppResult<Option<String>> {
+pub(crate) async fn write_atas_config_file(state: &AppState, force: bool) -> AppResult<Option<String>> {
     let Some(path) = atas_config_path() else {
         if force {
             return Err(AppError::NotFound(
@@ -1479,4 +1479,28 @@ pub async fn create_backup(state: State<'_, AppState>) -> AppResult<String> {
         .execute(&state.db)
         .await?;
     Ok(path.to_string_lossy().to_string())
+}
+
+/// Guarda en disco el PDF del reporte generado en el frontend. La ruta la elige
+/// el usuario en el diálogo nativo "Guardar como".
+#[tauri::command]
+pub async fn save_report_pdf(path: String, data_base64: String) -> AppResult<String> {
+    let target = PathBuf::from(path.trim());
+    let is_pdf = target
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("pdf"));
+    if !is_pdf {
+        return Err(AppError::Validation(
+            "El archivo debe tener extensión .pdf".into(),
+        ));
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data_base64.as_bytes())
+        .map_err(|_| AppError::Validation("Contenido del PDF no válido".into()))?;
+    if !bytes.starts_with(b"%PDF") {
+        return Err(AppError::Validation("Contenido del PDF no válido".into()));
+    }
+    tokio::fs::write(&target, bytes).await?;
+    Ok(target.to_string_lossy().to_string())
 }

@@ -450,3 +450,155 @@ export interface StatsResponse {
 
 export const TIMEFRAMES = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1'] as const;
 export type Timeframe = (typeof TIMEFRAMES)[number];
+
+// ---------------------------------------------------------------------------
+// Copy trading
+// ---------------------------------------------------------------------------
+
+export type SizingMode =
+  | 'same'
+  | 'fixed'
+  | 'multiplier'
+  | 'risk_balance'
+  | 'risk_equity'
+  | 'kelly'
+  | 'notional';
+
+export type SymbolFilterMode = 'all' | 'include' | 'exclude';
+
+export interface SizingParams {
+  mode: SizingMode;
+  fixedVolume: number;
+  multiplier: number;
+  riskPercent: number;
+  kellyFraction: number;
+  kellyMaxRiskPercent: number;
+  kellyLookback: number;
+  notionalMultiplier: number;
+  fallbackMode: SizingMode;
+}
+
+export interface FollowerSettings {
+  sizing: SizingParams;
+  familyScaling: boolean;
+  invert: boolean;
+  copySltp: boolean;
+  copyPending: boolean;
+  maxVolumePerTrade: number | null;
+  maxPositionVolume: number | null;
+  dailyLossLimit: number | null;
+  closeOnDailyLoss: boolean;
+  symbolFilterMode: SymbolFilterMode;
+  symbols: string[];
+  scheduleEnabled: boolean;
+  scheduleStart: string;
+  scheduleEnd: string;
+  scheduleDays: number[];
+  maxDelaySeconds: number;
+  maxDeviation: number;
+}
+
+export interface SymbolMapRow {
+  masterSymbol: string;
+  followerSymbol: string;
+  volumeRatio: number | null;
+}
+
+export interface CopyAccount {
+  id: string;
+  displayName: string;
+  login: number;
+  server: string;
+  provider: string;
+  status: string;
+  currency: string;
+  balance: number;
+  equity: number;
+  online: boolean;
+  lastSeenAt: string | null;
+  bridgeVersion: string | null;
+  role: 'master' | 'follower' | 'none';
+  markets: string[];
+}
+
+export interface CopyFollower {
+  id: string;
+  groupId: string;
+  accountId: string;
+  enabled: boolean;
+  pausedReason: string | null;
+  pausedAt: string | null;
+  settings: FollowerSettings;
+  symbolMap: SymbolMapRow[];
+  openPositions: number;
+  openVolume: number;
+  pendingOrders: number;
+  compatibility: 'compatible' | 'futures_only' | 'broker_futures';
+  dailyPnl: number | null;
+}
+
+export interface CopyGroup {
+  id: string;
+  name: string;
+  masterAccountId: string;
+  enabled: boolean;
+  followers: CopyFollower[];
+  createdAt: string;
+}
+
+export interface CopyOverview {
+  enabled: boolean;
+  groups: CopyGroup[];
+  accounts: CopyAccount[];
+}
+
+export interface CopyLogEntry {
+  id: string;
+  groupId: string;
+  groupName: string;
+  followerId: string;
+  accountId: string;
+  accountName: string;
+  signalKind: string | null;
+  action: string;
+  symbol: string;
+  side: string | null;
+  volume: number;
+  masterVolume: number | null;
+  masterPrice: number | null;
+  fillPrice: number | null;
+  fillVolume: number | null;
+  status: 'pending' | 'sent' | 'filled' | 'placed' | 'done' | 'rejected' | 'skipped';
+  error: string | null;
+  latencyMs: number | null;
+  createdAt: string;
+}
+
+export interface CopyToggleOptions {
+  cancelPending: boolean;
+  closePositions: boolean;
+}
+
+export interface SizePreviewInput {
+  followerId: string;
+  settings: FollowerSettings;
+  symbolMap: SymbolMapRow[];
+  symbol: string;
+  volume: number;
+  price: number;
+  stopLoss: number | null;
+}
+
+export interface SizePreview {
+  ok: boolean;
+  volume: number | null;
+  symbol: string | null;
+  message: string;
+}
+
+export interface InstallResult {
+  ok: boolean;
+  message: string;
+  log: string;
+  configPath: string | null;
+}

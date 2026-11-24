@@ -44,7 +44,7 @@
   margin-top: 5px;
   border-radius: 50%;
   flex: none;
-  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.035);
+  box-shadow: 0 0 0 4px rgba(var(--overlay-rgb), 0.035);
 }
 
 .strategy-title {
@@ -78,7 +78,7 @@
   padding: 10px;
   border: 1px solid var(--border);
   border-radius: 9px;
-  background: rgba(6, 10, 18, 0.22);
+  background: rgba(var(--well-rgb), 0.22);
 }
 
 .preview-item {

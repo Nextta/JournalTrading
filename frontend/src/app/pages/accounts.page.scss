@@ -9,11 +9,11 @@
   padding: 18px;
   margin-bottom: 22px;
   background:
-    radial-gradient(70% 140% at 100% 0%, rgba(109, 124, 255, 0.1), transparent 55%),
+    radial-gradient(70% 140% at 100% 0%, rgba(var(--accent-rgb), 0.1), transparent 55%),
     var(--surface-1);
 
   &.online {
-    border-color: rgba(45, 212, 160, 0.2);
+    border-color: rgba(var(--pos-rgb), 0.2);
   }
 }
 
@@ -128,14 +128,14 @@
   padding: 16px;
 
   &.current {
-    border-color: rgba(109, 124, 255, 0.4);
-    box-shadow: 0 0 0 1px rgba(109, 124, 255, 0.1);
+    border-color: rgba(var(--accent-rgb), 0.4);
+    box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.1);
   }
 
   &.pending {
-    border-color: rgba(245, 184, 75, 0.26);
+    border-color: rgba(var(--warning-rgb), 0.26);
     background:
-      linear-gradient(180deg, rgba(245, 184, 75, 0.045), transparent 40%),
+      linear-gradient(180deg, rgba(var(--warning-rgb), 0.045), transparent 40%),
       var(--surface-1);
   }
 
@@ -156,9 +156,9 @@
   width: 38px;
   height: 38px;
   border-radius: 11px;
-  background: linear-gradient(145deg, rgba(109, 124, 255, 0.28), rgba(139, 92, 246, 0.12));
-  border: 1px solid rgba(109, 124, 255, 0.24);
-  color: #c3c9ff;
+  background: linear-gradient(145deg, rgba(var(--accent-rgb), 0.28), rgba(139, 92, 246, 0.12));
+  border: 1px solid rgba(var(--accent-rgb), 0.24);
+  color: var(--accent-text);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.04em;
@@ -206,17 +206,17 @@
 
 .provider-pill {
   color: var(--muted);
-  background: rgba(139, 147, 167, 0.12);
+  background: rgba(var(--muted-rgb), 0.12);
   font-size: 9.5px;
   letter-spacing: 0.06em;
 
   &.nt8 {
-    color: #c4b5fd;
+    color: var(--violet-text);
     background: rgba(139, 92, 246, 0.14);
   }
 
   &.atas {
-    color: #5eead4;
+    color: var(--teal-text);
     background: rgba(20, 184, 166, 0.14);
   }
 }
@@ -228,7 +228,7 @@
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 9px;
-  background: rgba(6, 10, 18, 0.26);
+  background: rgba(var(--well-rgb), 0.26);
 
   > div {
     display: flex;

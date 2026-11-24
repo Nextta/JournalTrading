@@ -1,7 +1,9 @@
 mod atas;
 mod commands;
+mod copy;
 mod db;
 mod error;
+mod installers;
 mod models;
 mod mt5;
 mod services;
@@ -22,6 +24,7 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -99,6 +102,24 @@ pub fn run() {
             commands::open_atas_indicators_folder,
             commands::open_data_dir,
             commands::create_backup,
+            commands::save_report_pdf,
+            installers::install_nt8_bridge,
+            installers::install_atas_bridge,
+            installers::install_mt5_bridge,
+            copy::commands::get_copy_overview,
+            copy::commands::create_copy_group,
+            copy::commands::update_copy_group,
+            copy::commands::delete_copy_group,
+            copy::commands::set_copy_enabled,
+            copy::commands::set_copy_group_enabled,
+            copy::commands::add_copy_follower,
+            copy::commands::remove_copy_follower,
+            copy::commands::update_copy_follower,
+            copy::commands::set_copy_follower_enabled,
+            copy::commands::resume_copy_follower,
+            copy::commands::copy_panic,
+            copy::commands::list_copy_log,
+            copy::commands::preview_copy_size,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");

@@ -14,16 +14,19 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { open } from '@tauri-apps/plugin-dialog';
 import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../core/api.service';
-import type { SettingsResponse } from '../core/models';
+import type { InstallResult, SettingsResponse } from '../core/models';
 import { NotificationsService } from '../core/notifications.service';
 import { Store } from '../core/store';
+import { ThemeService } from '../core/theme.service';
 import {
   ConfirmDialogComponent,
   type ConfirmDialogResult,
 } from '../shared/confirm-dialog.component';
+import { InstallResultDialogComponent } from './install-result.dialog';
 
 @Component({
   selector: 'app-settings-page',
@@ -43,6 +46,7 @@ import {
 })
 export class SettingsPage {
   protected readonly store = inject(Store);
+  protected readonly theme = inject(ThemeService);
   private readonly api = inject(ApiService);
   private readonly dialog = inject(MatDialog);
   private readonly notifications = inject(NotificationsService);
@@ -53,6 +57,7 @@ export class SettingsPage {
   protected readonly backingUp = signal(false);
   protected readonly writingNt8 = signal(false);
   protected readonly writingAtas = signal(false);
+  protected readonly installing = signal<'nt8' | 'atas' | 'mt5' | null>(null);
   protected readonly showKey = signal(false);
   protected port = 4477;
   protected timezoneMode: 'broker' | 'local' = 'broker';
@@ -73,8 +78,12 @@ export class SettingsPage {
     return `${key.slice(0, 4)}••••••••${key.slice(-4)}`;
   }
 
+  protected apiOrigin(): string {
+    return `http://127.0.0.1:${this.settings()?.apiPort ?? this.port}`;
+  }
+
   protected endpoint(): string {
-    return `http://127.0.0.1:${this.settings()?.apiPort ?? this.port}/api/v1`;
+    return `${this.apiOrigin()}/api/v1`;
   }
 
   protected async copy(value: string): Promise<void> {
@@ -185,6 +194,51 @@ export class SettingsPage {
       this.notifications.error(error);
     } finally {
       this.writingAtas.set(false);
+    }
+  }
+
+  protected async installBridge(target: 'nt8' | 'atas' | 'mt5'): Promise<void> {
+    if (this.installing()) return;
+    let terminalDir: string | null = null;
+    if (target === 'mt5') {
+      try {
+        const picked = await open({
+          directory: true,
+          multiple: false,
+          title: 'Selecciona la carpeta de instalación de MetaTrader 5',
+          defaultPath: 'C:\\Program Files',
+        });
+        terminalDir = typeof picked === 'string' ? picked : null;
+      } catch (error) {
+        this.notifications.error(error);
+        return;
+      }
+      if (!terminalDir) return;
+    }
+    this.installing.set(target);
+    const titles = {
+      nt8: 'Instalar AddOn de NinjaTrader 8',
+      atas: 'Instalar AddOn de ATAS',
+      mt5: 'Instalar EA de MetaTrader 5',
+    };
+    const title = titles[target];
+    try {
+      const result: InstallResult =
+        target === 'nt8'
+          ? await this.api.installNt8Bridge()
+          : target === 'atas'
+            ? await this.api.installAtasBridge()
+            : await this.api.installMt5Bridge(terminalDir!);
+      await this.store.refreshSettings();
+      this.dialog.open(InstallResultDialogComponent, {
+        data: { title, result },
+        width: '620px',
+        maxWidth: '94vw',
+      });
+    } catch (error) {
+      this.notifications.error(error);
+    } finally {
+      this.installing.set(null);
     }
   }
 

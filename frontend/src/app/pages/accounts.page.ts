@@ -28,6 +28,7 @@ import {
   type ConfirmDialogResult,
 } from '../shared/confirm-dialog.component';
 import { AccountEditorDialogComponent } from './account-editor.dialog';
+import { openReportDialog } from './report-download.dialog';
 
 @Component({
   selector: 'app-accounts-page',
@@ -52,6 +53,10 @@ export class AccountsPage {
 
   protected money(value: number | null | undefined, currency: string): string {
     return formatMoney(value, currency);
+  }
+
+  protected openReport(account: Account): void {
+    openReportDialog(this.dialog, account);
   }
 
   protected accountInitials(account: Account): string {
