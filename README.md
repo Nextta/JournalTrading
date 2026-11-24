@@ -1,5 +1,7 @@
 # JournalTrading
 
+![Dashboard de JournalTrading](docs/images/dashboard.png)
+
 Diario de trading de escritorio para Windows con sincronización desde MetaTrader 5, NinjaTrader 8 y ATAS X. La aplicación combina un frontend Angular, un backend Rust/Tauri con SQLite, un Expert Advisor (EA) para MT5, un AddOn para NT8 y un lector de la base de datos local de ATAS con un indicador opcional.
 
 ## Características
@@ -102,7 +104,7 @@ npm run build
 Artefactos generados:
 
 - Ejecutable: `backend\target\release\journal-trading.exe`
-- Instalador: `backend\target\release\bundle\nsis\JournalTrading_0.1.13_x64-setup.exe`
+- Instalador: `backend\target\release\bundle\nsis\JournalTrading_0.1.14_x64-setup.exe`
 
 También puedes compilar únicamente el frontend:
 
